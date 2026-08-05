@@ -294,7 +294,6 @@ function drawBattery(ctx, item, p1, p2, color) {
   ctx.stroke()
 
   drawLabel(ctx, `${item.value}V`, c, perp, 30)
-  drawLabel(ctx, '+', { x: longCenter.x, y: longCenter.y }, perp, 16, 12)
 }
 
 function drawResistor(ctx, p1, p2, color, label) {

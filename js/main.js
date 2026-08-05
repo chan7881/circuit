@@ -35,7 +35,7 @@ let selectedUid = null
 let solveResult = solveCircuit(model)
 let hintResult = null
 let flowPhase = 0
-let flowVisible = true
+let flowVisible = false
 let flowMode = FLOW_MODE_CURRENT
 
 const canvas = document.getElementById('board')
