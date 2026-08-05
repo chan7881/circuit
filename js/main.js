@@ -1,7 +1,14 @@
 // 부트스트랩: DOM 이벤트 ↔ 순수 모듈(model/solver/hints/presets/render/input) 연결.
 // 이 파일만 DOM을 직접 건드린다 — 나머지 모듈은 전부 순수 함수라 test.html에서 독립 검증된다.
 
-import { COMPONENT_TYPES, PALETTE_ORDER, COMPONENT_COLOR, BULB_R } from './config.js'
+import {
+  COMPONENT_TYPES,
+  PALETTE_ORDER,
+  COMPONENT_COLOR,
+  BULB_R,
+  FLOW_MODE_CURRENT,
+  FLOW_MODE_ELECTRON,
+} from './config.js'
 import {
   createModel,
   createHistory,
@@ -28,6 +35,8 @@ let selectedUid = null
 let solveResult = solveCircuit(model)
 let hintResult = null
 let flowPhase = 0
+let flowVisible = true
+let flowMode = FLOW_MODE_CURRENT
 
 const canvas = document.getElementById('board')
 const ctx = canvas.getContext('2d')
@@ -38,6 +47,10 @@ const btnClear = document.getElementById('btn-clear')
 const btnPresets = document.getElementById('btn-presets')
 const presetMenu = document.getElementById('preset-menu')
 const btnExpand = document.getElementById('btn-expand')
+const btnFlowSettings = document.getElementById('btn-flow-settings')
+const flowSettingsMenu = document.getElementById('flow-settings-menu')
+const toggleFlowVisible = document.getElementById('toggle-flow-visible')
+const toggleFlowMode = document.getElementById('toggle-flow-mode')
 
 const sheet = document.getElementById('sheet')
 const sheetBackdrop = document.getElementById('sheet-backdrop')
@@ -98,12 +111,38 @@ function closePresetMenu() {
 
 btnPresets.addEventListener('click', () => {
   const willOpen = presetMenu.hidden
+  closeFlowSettingsMenu()
   presetMenu.hidden = !willOpen
   btnPresets.setAttribute('aria-expanded', String(willOpen))
 })
 
 document.addEventListener('click', (e) => {
   if (!presetMenu.hidden && !e.target.closest('.preset-wrap')) closePresetMenu()
+  if (!flowSettingsMenu.hidden && !e.target.closest('.flow-wrap')) closeFlowSettingsMenu()
+})
+
+// --- 전류 흐름 표시 설정(표시/숨김, 전류 방향 ↔ 전자 이동 방향) ---
+function closeFlowSettingsMenu() {
+  flowSettingsMenu.hidden = true
+  btnFlowSettings.setAttribute('aria-expanded', 'false')
+}
+
+btnFlowSettings.addEventListener('click', () => {
+  const willOpen = flowSettingsMenu.hidden
+  closePresetMenu()
+  flowSettingsMenu.hidden = !willOpen
+  btnFlowSettings.setAttribute('aria-expanded', String(willOpen))
+})
+
+toggleFlowVisible.addEventListener('click', () => {
+  flowVisible = !flowVisible
+  toggleFlowVisible.setAttribute('aria-checked', String(flowVisible))
+  toggleFlowMode.disabled = !flowVisible
+})
+
+toggleFlowMode.addEventListener('click', () => {
+  flowMode = flowMode === FLOW_MODE_ELECTRON ? FLOW_MODE_CURRENT : FLOW_MODE_ELECTRON
+  toggleFlowMode.setAttribute('aria-checked', String(flowMode === FLOW_MODE_ELECTRON))
 })
 
 // --- 되돌리기 / 전체 지우기 ---
@@ -301,6 +340,8 @@ function frame(ts) {
     selectedUid,
     current: solveResult.current,
     flowPhase,
+    flowVisible,
+    flowMode,
   })
   requestAnimationFrame(frame)
 }

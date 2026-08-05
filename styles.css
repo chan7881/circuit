@@ -61,7 +61,6 @@ html, body {
 .icon-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .icon-btn svg { flex-shrink: 0; }
 
-.preset-wrap { position: relative; }
 /* 저자 스타일시트의 display 지정은 [hidden] 속성에 대한 브라우저 기본값(display:none)보다
    우선순위가 높아서, 아래 .menu의 display:flex만 있으면 hidden이 걸려도 계속 보인다 —
    그래서 .menu[hidden]을 따로 명시해 감춤 상태가 실제로 먹히게 한다. */
@@ -94,6 +93,57 @@ html, body {
   font-size: 14px;
 }
 .menu button:hover, .menu button:focus-visible { background: var(--accent-bg); }
+
+.preset-wrap, .flow-wrap { position: relative; }
+
+#flow-settings-menu { min-width: 240px; padding: 4px 0; }
+
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  min-height: 44px;
+  font-size: 14px;
+}
+
+/* .menu button { all: unset; ... } 보다 우선순위가 높아야 아래 토글 스위치 모양이 먹힌다. */
+.menu button.switch {
+  all: unset;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  width: 44px;
+  height: 26px;
+  border-radius: 13px;
+  background: var(--border);
+  position: relative;
+  cursor: pointer;
+}
+.menu button.switch[aria-checked="true"] { background: var(--accent); }
+.menu button.switch:disabled { opacity: 0.4; cursor: default; }
+.switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+  transition: transform 0.15s ease;
+}
+.menu button.switch[aria-checked="true"] .switch-thumb { transform: translateX(18px); }
+
+.switch-help {
+  margin: 0;
+  padding: 4px 14px 10px;
+  max-width: 240px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  opacity: 0.75;
+}
 
 /* --- 본문: 팔레트 + 캔버스 --- */
 #main-row {

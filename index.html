@@ -28,6 +28,24 @@
       <div id="preset-menu" class="menu" hidden></div>
     </div>
 
+    <div class="flow-wrap">
+      <button id="btn-flow-settings" class="tap-target icon-btn" aria-haspopup="true" aria-expanded="false" aria-label="전류 흐름 표시 설정">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12c2-4 4-4 6 0s4 4 6 0 4-4 6 0"/></svg>
+        <span class="btn-text">흐름 표시</span>
+      </button>
+      <div id="flow-settings-menu" class="menu" hidden>
+        <div class="switch-row">
+          <span>흐름 애니메이션</span>
+          <button id="toggle-flow-visible" class="switch" role="switch" aria-checked="true" aria-label="흐름 애니메이션 표시"><span class="switch-thumb"></span></button>
+        </div>
+        <div class="switch-row" id="flow-mode-row">
+          <span>전자 이동 방향으로 보기</span>
+          <button id="toggle-flow-mode" class="switch" role="switch" aria-checked="false" aria-label="전자 이동 방향으로 보기"><span class="switch-thumb"></span></button>
+        </div>
+        <p class="switch-help">꺼두면 <b>전류 방향</b>(+ → −, 화살표)을, 켜면 <b>전자가 실제로 이동하는 방향</b>(− → +, 점)을 보여줘요. 둘은 항상 서로 반대예요.</p>
+      </div>
+    </div>
+
     <div class="spacer"></div>
 
     <button id="btn-expand" class="tap-target icon-btn primary" aria-label="크게 보기">

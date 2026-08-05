@@ -14,6 +14,11 @@ import {
   ZERO_CURRENT_EPS,
   BULB_R,
   BULB_RATED_POWER,
+  FLOW_MODE_CURRENT,
+  FLOW_MODE_ELECTRON,
+  FLOW_PARTICLE_SPACING,
+  CURRENT_FLOW_COLOR,
+  ELECTRON_FLOW_COLOR,
 } from './config.js'
 import { EDGE_LIST, canPlace } from './model.js'
 
@@ -103,7 +108,12 @@ export function draw(ctx, cssWidth, cssHeight, model, state) {
       }
       const current = state.current?.get(item.uid) ?? 0
       const selected = state.selectedUid === item.uid
-      drawComponent(ctx, item, path.bodyStart, path.bodyEnd, current, selected, state.flowPhase ?? 0, path.full)
+      const flowVisible = state.flowVisible !== false
+      const flowMode = state.flowMode === FLOW_MODE_ELECTRON ? FLOW_MODE_ELECTRON : FLOW_MODE_CURRENT
+      drawComponent(ctx, item, path.bodyStart, path.bodyEnd, current, selected, state.flowPhase ?? 0, path.full, {
+        visible: flowVisible,
+        mode: flowMode,
+      })
     })
   }
 
@@ -186,7 +196,7 @@ function symbolHalfExtent(item, len) {
   }
 }
 
-function drawComponent(ctx, item, p1, p2, current, selected, flowPhase, fullPath) {
+function drawComponent(ctx, item, p1, p2, current, selected, flowPhase, fullPath, flowSettings) {
   const color = COMPONENT_COLOR[item.type] ?? '#334155'
   const path = fullPath ?? [p1, p2]
   const len = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1
@@ -243,7 +253,9 @@ function drawComponent(ctx, item, p1, p2, current, selected, flowPhase, fullPath
       break
   }
 
-  if (Math.abs(current) > ZERO_CURRENT_EPS) drawFlowAnimation(ctx, path, current, flowPhase, color)
+  if (flowSettings.visible && Math.abs(current) > ZERO_CURRENT_EPS) {
+    drawFlowParticles(ctx, path, current, flowPhase, flowSettings.mode)
+  }
 
   ctx.restore()
 }
@@ -410,17 +422,86 @@ function drawLabel(ctx, text, center, perp, offset, fontSize = 15, small = false
   ctx.restore()
 }
 
-function drawFlowAnimation(ctx, path, current, flowPhase, color) {
-  const points = current > 0 ? path : [...path].reverse()
-  const dashLen = 8
-  const gapLen = 14
-  const speed = Math.min(Math.abs(current) * 40, 120) // px/s 상당(논리 단위)
+function pathLength(path) {
+  let total = 0
+  for (let i = 0; i < path.length - 1; i++) total += Math.hypot(path[i + 1].x - path[i].x, path[i + 1].y - path[i].y)
+  return total
+}
+
+/** path를 따라 path[0](=d0)에서 잰 거리 d 지점의 좌표와, 그 지점에서 path[0]→끝 방향을 향하는
+ *  접선 각도를 낸다. 병렬 스텁을 포함한 꺾인 경로(polyline)를 하나의 연속된 선으로 다룬다. */
+function pointAndAngleAtDistance(path, d) {
+  let remaining = Math.max(0, d)
+  for (let i = 0; i < path.length - 1; i++) {
+    const a = path[i]
+    const b = path[i + 1]
+    const segLen = Math.hypot(b.x - a.x, b.y - a.y)
+    if (remaining <= segLen || i === path.length - 2) {
+      const t = segLen > 0 ? Math.min(1, remaining / segLen) : 0
+      return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, angle: Math.atan2(b.y - a.y, b.x - a.x) }
+    }
+    remaining -= segLen
+  }
+  const last = path[path.length - 1]
+  return { x: last.x, y: last.y, angle: 0 }
+}
+
+/** 전류 방향 표시: 진행 방향을 가리키는 작은 화살표(전통적인 회로도 관례 — 화살표가 전류 방향). */
+function drawCurrentArrow(ctx, x, y, angle, color) {
+  const size = 6
   ctx.save()
-  ctx.strokeStyle = color
-  ctx.globalAlpha = 0.85
-  ctx.lineWidth = 3
-  ctx.setLineDash([dashLen, gapLen])
-  ctx.lineDashOffset = -flowPhase * speed
-  strokePolyline(ctx, points)
+  ctx.translate(x, y)
+  ctx.rotate(angle)
+  ctx.fillStyle = color
+  ctx.beginPath()
+  ctx.moveTo(size, 0)
+  ctx.lineTo(-size * 0.7, size * 0.6)
+  ctx.lineTo(-size * 0.7, -size * 0.6)
+  ctx.closePath()
+  ctx.fill()
   ctx.restore()
+}
+
+/** 전자 표시: 방향이 없는 둥근 점 + "−" 표시(음전하 관례) — 화살표가 아닌 것은, 전자 자체는
+ *  화살표 모양의 실체가 아니라 그냥 음전하 알갱이라는 걸 시각적으로 구분하기 위함. */
+function drawElectronMark(ctx, x, y, color) {
+  const r = 5
+  ctx.save()
+  ctx.fillStyle = color
+  ctx.beginPath()
+  ctx.arc(x, y, r, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.strokeStyle = '#fff'
+  ctx.lineWidth = 1.5
+  ctx.beginPath()
+  ctx.moveTo(x - r * 0.55, y)
+  ctx.lineTo(x + r * 0.55, y)
+  ctx.stroke()
+  ctx.restore()
+}
+
+/**
+ * 전류·전자 흐름을 이동하는 작은 표시들로 그린다(예전의 "점선이 흐르는" 표현을 대체).
+ * mode='current'면 화살표가 전류 방향(+→−)으로, mode='electron'이면 점(−)이 전자의 실제
+ * 이동 방향(−→+, 전류와 반대)으로 움직인다 — 둘은 항상 서로 반대 방향이다.
+ */
+function drawFlowParticles(ctx, path, current, flowPhase, mode) {
+  const totalLen = pathLength(path)
+  if (totalLen < 2) return
+  const isElectron = mode === FLOW_MODE_ELECTRON
+  const conventionalForward = current > 0
+  const forward = isElectron ? !conventionalForward : conventionalForward
+  const speed = Math.min(Math.abs(current) * 40, 120)
+  const spacing = FLOW_PARTICLE_SPACING
+  const color = isElectron ? ELECTRON_FLOW_COLOR : CURRENT_FLOW_COLOR
+  const travel = flowPhase * speed * (forward ? 1 : -1)
+
+  const count = Math.ceil(totalLen / spacing) + 1
+  for (let i = 0; i < count; i++) {
+    let d = (i * spacing + travel) % totalLen
+    if (d < 0) d += totalLen
+    const { x, y, angle } = pointAndAngleAtDistance(path, d)
+    if (isElectron) drawElectronMark(ctx, x, y, color)
+    else drawCurrentArrow(ctx, x, y, forward ? angle : angle + Math.PI, color)
+  }
 }

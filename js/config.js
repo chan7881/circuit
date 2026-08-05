@@ -71,3 +71,12 @@ export const COMPONENT_COLOR = {
   ammeter: '#0f766e',
   voltmeter: '#0f766e',
 }
+
+// --- 전류 흐름 표시 ---
+// 전류 방향(+ → -, 회로도의 관례적 방향)과 전자의 실제 이동 방향(- → +)은 서로 반대다 —
+// 이 둘을 헷갈리기 쉬운 대표적인 개념이라 토글로 전환해 볼 수 있게 한다.
+export const FLOW_MODE_CURRENT = 'current'
+export const FLOW_MODE_ELECTRON = 'electron'
+export const FLOW_PARTICLE_SPACING = 26 // 입자(화살표/전자 표시) 사이 간격(논리 단위)
+export const CURRENT_FLOW_COLOR = '#f59e0b' // 전류 방향 화살표 — 호박색(부품별 강조색과 겹치지 않게)
+export const ELECTRON_FLOW_COLOR = '#2563eb' // 전자 표시 — 파란색(음전하 관례)
