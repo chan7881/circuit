@@ -154,9 +154,43 @@ function strokePolyline(ctx, points) {
   ctx.stroke()
 }
 
+const SWITCH_GAP_RATIO = 0.22
+const BULB_RADIUS = 16
+const METER_RADIUS = 15
+// 전지 기호의 두 극판(짧고 굵은 −극, 길고 얇은 +극) 사이의 축 방향 간격 — 실제 전지 기호처럼
+// 두 극판 사이에는 도선을 그리지 않아 "여기가 전지(화학전지)"라는 걸 보여준다.
+const BATTERY_PLATE_GAP = 5
+
+function resistorBodyLen(len) {
+  return Math.min(48, len * 0.6)
+}
+
+/** 리드선(도선)이 어디서 멈추고 부품 기호가 어디서 시작하는지, 중심에서 잰 절반 길이.
+ *  실제 회로도처럼 기호가 있는 구간에는 리드선을 겹쳐 그리지 않는다 — 겹쳐 그리면
+ *  저항 지그재그가 직선에 묻히고, 스위치는 열림/닫힘 상태의 "끊김"이 안 보이게 된다. */
+function symbolHalfExtent(item, len) {
+  switch (item.type) {
+    case 'battery':
+      return BATTERY_PLATE_GAP
+    case 'resistor':
+      return resistorBodyLen(len) / 2
+    case 'bulb':
+      return BULB_RADIUS
+    case 'switch':
+      return len * SWITCH_GAP_RATIO
+    case 'ammeter':
+    case 'voltmeter':
+      return METER_RADIUS
+    default:
+      return 0 // 도선: 기호가 없으니 리드선이 끝까지 이어진다
+  }
+}
+
 function drawComponent(ctx, item, p1, p2, current, selected, flowPhase, fullPath) {
   const color = COMPONENT_COLOR[item.type] ?? '#334155'
   const path = fullPath ?? [p1, p2]
+  const len = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1
+  const half = symbolHalfExtent(item, len)
   ctx.save()
 
   // 선택 표시·전류 흐름 애니메이션은 노드-노드 전체 경로(병렬 연결 시 스텁 포함)를 따라
@@ -170,12 +204,19 @@ function drawComponent(ctx, item, p1, p2, current, selected, flowPhase, fullPath
     ctx.globalAlpha = 1
   }
 
-  // 리드선(연결 부분)은 항상 실선으로 먼저 그린다. 중앙 기호가 그 위에 얹힌다.
+  // 리드선은 노드에서 기호 경계까지만 긋는다(기호가 있는 가운데 구간은 비워 둔다 — 그 안은
+  // 각 기호 자신의 그리기 함수가 책임진다).
   ctx.strokeStyle = color
   ctx.lineWidth = 4
   ctx.lineCap = 'round'
+  const leadStart = mid(p1, p2, 0.5 - half / len)
+  const leadEnd = mid(p1, p2, 0.5 + half / len)
   ctx.beginPath()
   ctx.moveTo(p1.x, p1.y)
+  ctx.lineTo(leadStart.x, leadStart.y)
+  ctx.stroke()
+  ctx.beginPath()
+  ctx.moveTo(leadEnd.x, leadEnd.y)
   ctx.lineTo(p2.x, p2.y)
   ctx.stroke()
 
@@ -216,7 +257,7 @@ function drawBattery(ctx, item, p1, p2, color) {
   const c = mid(p1, p2)
   const dx = (p2.x - p1.x) / Math.hypot(p2.x - p1.x, p2.y - p1.y || 1)
   const dy = (p2.y - p1.y) / Math.hypot(p2.x - p1.x, p2.y - p1.y || 1)
-  const gap = 5
+  const gap = BATTERY_PLATE_GAP
   // flipped=false → p2(v) 쪽이 +(긴 막대), flipped=true → p1(u) 쪽이 +
   const plusAtP2 = !item.flipped
   const longSide = plusAtP2 ? 1 : -1 // +1: p2 방향에 긴 막대
@@ -249,20 +290,23 @@ function drawResistor(ctx, p1, p2, color, label) {
   const ux = (p2.x - p1.x) / len
   const uy = (p2.y - p1.y) / len
   const perp = perpUnit(p1, p2)
-  const bodyLen = Math.min(48, len * 0.6)
+  const bodyLen = resistorBodyLen(len)
   const start = mid(p1, p2, 0.5 - bodyLen / 2 / len)
-  const zigzags = 6
   const amp = 10
+  // 지그재그는 축 위(0)에서 시작해 위·아래로 세 번 흔들리다 다시 축 위(0)에서 끝난다 —
+  // 양옆 리드선과 어긋남 없이 이어지려면 시작·끝 점이 반드시 축 위에 있어야 한다.
+  const offsets = [0, 1, -1, 1, -1, 1, -1, 0]
   ctx.strokeStyle = color
   ctx.lineWidth = 4
   ctx.beginPath()
-  ctx.moveTo(start.x, start.y)
-  for (let i = 1; i <= zigzags; i++) {
-    const t = i / zigzags
+  offsets.forEach((side, i) => {
+    const t = i / (offsets.length - 1)
     const along = { x: start.x + ux * bodyLen * t, y: start.y + uy * bodyLen * t }
-    const side = i % 2 === 1 ? 1 : -1
-    ctx.lineTo(along.x + perp.x * amp * side, along.y + perp.y * amp * side)
-  }
+    const x = along.x + perp.x * amp * side
+    const y = along.y + perp.y * amp * side
+    if (i === 0) ctx.moveTo(x, y)
+    else ctx.lineTo(x, y)
+  })
   ctx.stroke()
   drawLabel(ctx, label, mid(p1, p2), perp, 26)
 }
@@ -271,7 +315,7 @@ function drawBulb(ctx, p1, p2, color, current) {
   const c = mid(p1, p2)
   const power = current * current * BULB_R
   const brightness = Math.max(0, Math.min(1, power / BULB_RATED_POWER))
-  const r = 16
+  const r = BULB_RADIUS
   if (brightness > 0.02) {
     const glowR = r + 18 * brightness
     const grad = ctx.createRadialGradient(c.x, c.y, r * 0.4, c.x, c.y, glowR)
@@ -306,8 +350,8 @@ function drawSwitch(ctx, p1, p2, color, closed) {
   ctx.strokeStyle = color
   ctx.lineWidth = 4
   // 접점 두 개
-  const gap1 = mid(p1, p2, 0.5 - 0.22)
-  const gap2 = mid(p1, p2, 0.5 + 0.22)
+  const gap1 = mid(p1, p2, 0.5 - SWITCH_GAP_RATIO)
+  const gap2 = mid(p1, p2, 0.5 + SWITCH_GAP_RATIO)
   ctx.beginPath()
   ctx.arc(gap1.x, gap1.y, 4, 0, Math.PI * 2)
   ctx.fill()
@@ -328,7 +372,7 @@ function drawSwitch(ctx, p1, p2, color, closed) {
 
 function drawMeter(ctx, p1, p2, color, letter, reading, unit) {
   const c = mid(p1, p2)
-  const r = 15
+  const r = METER_RADIUS
   ctx.fillStyle = '#fff'
   ctx.strokeStyle = color
   ctx.lineWidth = 3
