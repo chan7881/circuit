@@ -4,10 +4,16 @@ export const GRID_COLS = 6 // 노드 열 개수 (0-indexed 0..5)
 export const GRID_ROWS = 4 // 노드 행 개수 (0-indexed 0..3)
 
 // --- 물리 상수 (단위: 옴, 볼트, 암페어, 와트) ---
-export const WIRE_R = 0.01
-export const BATTERY_INTERNAL_R = 0.1
-export const SWITCH_CLOSED_R = 0.01
-export const AMMETER_R = 0.01
+// 도선·닫힌 스위치·전류계는 "이상적인 도체"로 취급한다 — 저항을 정확히 0으로 두면 노턴 등가의
+// 전도도(1/R)가 무한대가 되어 계산이 깨지므로, 계산상 필요한 최소한으로만 작게 잡는다. 중학생이
+// 손으로 V=IR·직렬/병렬 공식을 계산했을 때와 시뮬레이터 측정값이 어긋나 보이지 않도록, 실제
+// 저항값(5~50Ω)에 비해 완전히 무시할 수 있는 크기(10만분의 1 수준)로 둔다.
+export const WIRE_R = 0.0001
+export const SWITCH_CLOSED_R = 0.0001
+export const AMMETER_R = 0.0001
+// 전지 내부저항도 같은 이유로 작게 잡되, 도선보다는 조금 커서 "전지만 도선으로 직접 이은
+// 합선" 같은 극단적인 경우에도 전류가 유한한 값으로 안정적으로 계산되게 한다.
+export const BATTERY_INTERNAL_R = 0.001
 export const VOLTMETER_R = 1_000_000
 
 export const BULB_R = 10 // 전구 저항(고정, 선형 모델)

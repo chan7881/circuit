@@ -43,17 +43,33 @@ function perpUnit(p1, p2) {
   return { x: -dy / len, y: dx / len }
 }
 
-/** 간선의 두 노드 좌표와 슬롯 인덱스·전체 슬롯 수를 받아, 그 슬롯이 실제로 그려질 두 끝점을 낸다.
- *  슬롯이 1개뿐이면 간선 그대로, 2개면 수직으로 서로 반대 방향 오프셋을 줘 병렬로 보이게 한다. */
-function slotEndpoints(p1, p2, slotIndex, slotCount) {
-  if (slotCount <= 1) return [p1, p2]
+/**
+ * 간선의 두 노드와 슬롯 인덱스·전체 슬롯 수를 받아, 그 슬롯의 전체 그리기 경로를 낸다.
+ * 슬롯이 1개뿐이면 노드 사이를 그대로 잇는다. 2개(병렬)면 각 슬롯을 수직으로 띄워 옆으로
+ * 나란히 보이게 하되, 노드에서 살짝 벌어졌다가 다시 모이는 짧은 연결선(스텁)을 양 끝에
+ * 붙여서 "노드에 실제로 연결된 병렬 가지"로 보이게 한다 — 스텁 없이 몸통만 옆으로 옮기면
+ * 노드 점과 부품 사이에 빈틈이 생겨 회로가 끊긴 것처럼 보인다.
+ */
+function edgeItemPath(p1, p2, slotIndex, slotCount) {
+  if (slotCount <= 1) return { full: [p1, p2], bodyStart: p1, bodyEnd: p2, hasStubs: false }
   const perp = perpUnit(p1, p2)
   const sign = slotIndex === 0 ? -1 : 1
   const off = (STACK_OFFSET / 2) * sign
-  return [
-    { x: p1.x + perp.x * off, y: p1.y + perp.y * off },
-    { x: p2.x + perp.x * off, y: p2.y + perp.y * off },
-  ]
+  const a = { x: p1.x + perp.x * off, y: p1.y + perp.y * off }
+  const b = { x: p2.x + perp.x * off, y: p2.y + perp.y * off }
+  return { full: [p1, a, b, p2], bodyStart: a, bodyEnd: b, hasStubs: true }
+}
+
+function drawStub(ctx, from, to) {
+  ctx.save()
+  ctx.strokeStyle = COMPONENT_COLOR.wire
+  ctx.lineWidth = 4
+  ctx.lineCap = 'round'
+  ctx.beginPath()
+  ctx.moveTo(from.x, from.y)
+  ctx.lineTo(to.x, to.y)
+  ctx.stroke()
+  ctx.restore()
 }
 
 export function draw(ctx, cssWidth, cssHeight, model, state) {
@@ -79,10 +95,15 @@ export function draw(ctx, cssWidth, cssHeight, model, state) {
     }
 
     items.forEach((item, idx) => {
-      const [a, b] = slotEndpoints(p1, p2, idx, items.length)
+      const path = edgeItemPath(p1, p2, idx, items.length)
+      if (path.hasStubs) {
+        const [nodeA, a, b, nodeB] = path.full
+        drawStub(ctx, nodeA, a)
+        drawStub(ctx, b, nodeB)
+      }
       const current = state.current?.get(item.uid) ?? 0
       const selected = state.selectedUid === item.uid
-      drawComponent(ctx, item, a, b, current, selected, state.flowPhase ?? 0)
+      drawComponent(ctx, item, path.bodyStart, path.bodyEnd, current, selected, state.flowPhase ?? 0, path.full)
     })
   }
 
@@ -126,19 +147,26 @@ function drawPlaceableHighlight(ctx, p1, p2) {
   ctx.restore()
 }
 
-function drawComponent(ctx, item, p1, p2, current, selected, flowPhase) {
+function strokePolyline(ctx, points) {
+  ctx.beginPath()
+  ctx.moveTo(points[0].x, points[0].y)
+  for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y)
+  ctx.stroke()
+}
+
+function drawComponent(ctx, item, p1, p2, current, selected, flowPhase, fullPath) {
   const color = COMPONENT_COLOR[item.type] ?? '#334155'
+  const path = fullPath ?? [p1, p2]
   ctx.save()
 
+  // 선택 표시·전류 흐름 애니메이션은 노드-노드 전체 경로(병렬 연결 시 스텁 포함)를 따라
+  // 그려서, 부품이 실제로 양쪽 노드에 연결되어 있다는 게 시각적으로 이어져 보이게 한다.
   if (selected) {
     ctx.strokeStyle = '#facc15'
     ctx.lineWidth = 14
     ctx.lineCap = 'round'
     ctx.globalAlpha = 0.5
-    ctx.beginPath()
-    ctx.moveTo(p1.x, p1.y)
-    ctx.lineTo(p2.x, p2.y)
-    ctx.stroke()
+    strokePolyline(ctx, path)
     ctx.globalAlpha = 1
   }
 
@@ -174,7 +202,7 @@ function drawComponent(ctx, item, p1, p2, current, selected, flowPhase) {
       break
   }
 
-  if (Math.abs(current) > ZERO_CURRENT_EPS) drawFlowAnimation(ctx, p1, p2, current, flowPhase, color)
+  if (Math.abs(current) > ZERO_CURRENT_EPS) drawFlowAnimation(ctx, path, current, flowPhase, color)
 
   ctx.restore()
 }
@@ -338,12 +366,8 @@ function drawLabel(ctx, text, center, perp, offset, fontSize = 15, small = false
   ctx.restore()
 }
 
-function drawFlowAnimation(ctx, p1, p2, current, flowPhase, color) {
-  const len = Math.hypot(p2.x - p1.x, p2.y - p1.y)
-  if (len < 1) return
-  const forward = current > 0
-  const from = forward ? p1 : p2
-  const to = forward ? p2 : p1
+function drawFlowAnimation(ctx, path, current, flowPhase, color) {
+  const points = current > 0 ? path : [...path].reverse()
   const dashLen = 8
   const gapLen = 14
   const speed = Math.min(Math.abs(current) * 40, 120) // px/s 상당(논리 단위)
@@ -353,9 +377,6 @@ function drawFlowAnimation(ctx, p1, p2, current, flowPhase, color) {
   ctx.lineWidth = 3
   ctx.setLineDash([dashLen, gapLen])
   ctx.lineDashOffset = -flowPhase * speed
-  ctx.beginPath()
-  ctx.moveTo(from.x, from.y)
-  ctx.lineTo(to.x, to.y)
-  ctx.stroke()
+  strokePolyline(ctx, points)
   ctx.restore()
 }

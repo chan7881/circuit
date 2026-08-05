@@ -62,6 +62,13 @@ html, body {
 .icon-btn svg { flex-shrink: 0; }
 
 .preset-wrap { position: relative; }
+/* 저자 스타일시트의 display 지정은 [hidden] 속성에 대한 브라우저 기본값(display:none)보다
+   우선순위가 높아서, 아래 .menu의 display:flex만 있으면 hidden이 걸려도 계속 보인다 —
+   그래서 .menu[hidden]을 따로 명시해 감춤 상태가 실제로 먹히게 한다. */
+.menu[hidden] {
+  display: none;
+}
+
 .menu {
   position: absolute;
   top: calc(100% + 4px);
