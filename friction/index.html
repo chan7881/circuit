@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>마찰 전기 실험실</title>
+<meta name="description" content="중학생용 마찰 전기 시뮬레이터 — 문지르면 전자가 옮겨가 물체가 대전되는 과정과 전기력을 관찰한다" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div id="app">
+
+  <header id="topbar">
+    <div class="seg" role="tablist" aria-label="모드 선택">
+      <button id="tab-rub" class="seg-btn selected tap-target" role="tab" aria-selected="true">1. 문지르기</button>
+      <button id="tab-force" class="seg-btn tap-target" role="tab" aria-selected="false">2. 힘 관찰</button>
+    </div>
+    <div class="spacer"></div>
+    <button id="btn-reset" class="tap-target icon-btn" aria-label="처음으로 되돌리기">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10h10a5 5 0 0 1 0 10h-2"/><path d="M7 6l-4 4 4 4"/></svg>
+      <span class="btn-text">처음으로</span>
+    </button>
+    <button id="btn-expand" class="tap-target icon-btn primary" aria-label="크게 보기">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
+      <span class="btn-text">크게 보기</span>
+    </button>
+  </header>
+
+  <main id="board-wrap">
+    <canvas id="board" aria-label="마찰 전기 실험 화면"></canvas>
+    <p id="hint-bar" role="status"></p>
+  </main>
+
+  <!-- 모드 1 컨트롤 -->
+  <nav id="controls-rub" class="controls" aria-label="문지르기 조작">
+    <div class="ctrl-group">
+      <span class="ctrl-label">물체</span>
+      <div id="pair-buttons" class="btn-row"></div>
+    </div>
+    <div class="ctrl-group">
+      <span class="ctrl-label">전하 보기</span>
+      <div class="btn-row">
+        <button class="chip tap-target selected" data-charge-mode="all">모두</button>
+        <button class="chip tap-target" data-charge-mode="diff">차이만</button>
+        <button class="chip tap-target" data-charge-mode="none">안 보기</button>
+      </div>
+    </div>
+    <div class="ctrl-group grow">
+      <button id="btn-rub" class="primary-btn tap-target">문지르기</button>
+    </div>
+  </nav>
+
+  <!-- 모드 2 컨트롤 -->
+  <nav id="controls-force" class="controls" aria-label="힘 관찰 조작" hidden>
+    <div class="ctrl-group">
+      <span class="ctrl-label">물체 A</span>
+      <div class="btn-row" data-side="left">
+        <button class="chip tap-target" data-charge="1">(+)전기</button>
+        <button class="chip tap-target selected" data-charge="-1">(−)전기</button>
+      </div>
+    </div>
+    <div class="ctrl-group">
+      <span class="ctrl-label">물체 B</span>
+      <div class="btn-row" data-side="right">
+        <button class="chip tap-target" data-charge="1">(+)전기</button>
+        <button class="chip tap-target selected" data-charge="-1">(−)전기</button>
+      </div>
+    </div>
+  </nav>
+
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

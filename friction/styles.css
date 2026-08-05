@@ -1,0 +1,183 @@
+/* 마찰 전기 실험실 — circuit 시뮬레이터와 같은 시각 언어·모바일 규격을 따른다. */
+
+:root {
+  color-scheme: light;
+  --bg: #f8fafc;
+  --panel: #ffffff;
+  --border: #e2e8f0;
+  --text: #334155;
+  --accent: #2563eb;
+  --accent-bg: #eff6ff;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  width: 100vw;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+/* --- 상단 바 --- */
+#topbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  flex-shrink: 0;
+}
+#topbar .spacer { flex: 1; }
+
+.seg { display: flex; gap: 4px; }
+.seg-btn {
+  all: unset;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text);
+}
+.seg-btn.selected { border-color: var(--accent); background: var(--accent-bg); color: var(--accent); font-weight: 700; }
+
+.icon-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+.icon-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* --- 캔버스 --- */
+#board-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+#board {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  display: block;
+  touch-action: none; /* 브라우저 스크롤·줌 제스처와 충돌 방지 */
+  background: var(--bg);
+}
+
+#hint-bar {
+  margin: 0;
+  padding: 8px 12px;
+  min-height: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+#hint-bar[data-tone="result"] { color: #0f766e; }
+#hint-bar[data-tone="info"] { color: #475569; font-weight: 500; }
+
+/* --- 하단 컨트롤 --- */
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  flex-shrink: 0;
+}
+.controls[hidden] { display: none; }
+
+.ctrl-group { display: flex; align-items: center; gap: 6px; }
+.ctrl-group.grow { flex: 1; justify-content: flex-end; }
+.ctrl-label { font-size: 12px; color: #64748b; white-space: nowrap; }
+.btn-row { display: flex; gap: 4px; }
+
+.chip {
+  all: unset;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text);
+}
+.chip.selected { border-color: var(--accent); background: var(--accent-bg); color: var(--accent); font-weight: 700; }
+
+.primary-btn {
+  all: unset;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 0 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.primary-btn:active { background: #1d4ed8; }
+
+.tap-target { min-height: 44px; min-width: 44px; }
+
+/* --- 납작한 임베드(학습지 iframe 등 높이 260px 안팎) --- */
+@media (max-height: 300px) {
+  #topbar { padding: 2px 4px; }
+  .seg-btn, .icon-btn { height: 34px; min-height: 34px; font-size: 12px; padding: 0 8px; }
+  .icon-btn .btn-text { display: none; }
+  #hint-bar { padding: 4px 8px; font-size: 12px; }
+  .controls { padding: 4px 6px; gap: 4px 8px; }
+  .chip, .primary-btn { min-height: 36px; font-size: 12px; padding: 0 10px; }
+  .ctrl-label { display: none; }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --panel: #1e293b;
+    --border: #334155;
+    --text: #e2e8f0;
+    --accent: #60a5fa;
+    --accent-bg: #1e3a5f;
+  }
+  /* 캔버스 그림은 밝은 배경을 전제로 그려지므로 캔버스만 밝게 유지한다(circuit과 같은 방침) */
+  body { background: #0f172a; }
+  #board { background: #f8fafc; }
+}
