@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>회로 시뮬레이터 — 자체 검증</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 24px auto; padding: 0 16px; }
+  h1 { font-size: 18px; }
+  #summary { font-size: 16px; font-weight: bold; margin: 12px 0; }
+  ul { list-style: none; padding: 0; }
+  li { padding: 6px 8px; border-radius: 4px; margin-bottom: 4px; font-size: 14px; }
+  li.pass { background: #e6f7ec; color: #1a7f3c; }
+  li.fail { background: #fdecea; color: #b3261e; }
+</style>
+</head>
+<body>
+<h1>회로 시뮬레이터 — 물리 로직 자체 검증</h1>
+<div id="summary">실행 중…</div>
+<ul id="list"></ul>
+<script type="module">
+  import { runAll } from './js/tests.js'
+
+  const results = runAll()
+  const passCount = results.filter((r) => r.ok).length
+  const summary = document.getElementById('summary')
+  const list = document.getElementById('list')
+
+  summary.textContent = `${passCount} / ${results.length} PASS`
+  summary.style.color = passCount === results.length ? '#1a7f3c' : '#b3261e'
+
+  for (const r of results) {
+    const li = document.createElement('li')
+    li.className = r.ok ? 'pass' : 'fail'
+    li.textContent = `${r.ok ? 'PASS' : 'FAIL'} — ${r.label}`
+    list.appendChild(li)
+  }
+
+  console.log(`[circuit-tests] ${passCount}/${results.length} PASS`)
+  for (const r of results) if (!r.ok) console.error(`[circuit-tests] FAIL: ${r.label}`)
+</script>
+</body>
+</html>

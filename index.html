@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>전기회로 실험실</title>
+<meta name="description" content="중학생용 간이 전기회로 시뮬레이터 — 전지·전구·저항·전류계·전압계·스위치" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div id="app">
+
+  <header id="topbar">
+    <button id="btn-undo" class="tap-target icon-btn" aria-label="되돌리기" disabled>
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10h10a5 5 0 0 1 0 10h-2"/><path d="M7 6l-4 4 4 4"/></svg>
+      <span class="btn-text">되돌리기</span>
+    </button>
+    <button id="btn-clear" class="tap-target icon-btn" aria-label="전체 지우기">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></svg>
+      <span class="btn-text">전체 지우기</span>
+    </button>
+
+    <div class="preset-wrap">
+      <button id="btn-presets" class="tap-target icon-btn" aria-haspopup="true" aria-expanded="false" aria-label="예제 회로 불러오기">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg>
+        <span class="btn-text">예제 회로</span>
+      </button>
+      <div id="preset-menu" class="menu" hidden></div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <button id="btn-expand" class="tap-target icon-btn primary" aria-label="크게 보기">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
+      <span class="btn-text">크게 보기</span>
+    </button>
+  </header>
+
+  <div id="main-row">
+    <nav id="palette" aria-label="부품 팔레트"></nav>
+
+    <main id="board-wrap">
+      <canvas id="board" aria-label="회로판. 팔레트에서 부품을 고른 뒤 칸을 탭해서 놓으세요."></canvas>
+      <p id="hint-bar" role="status"></p>
+    </main>
+  </div>
+
+  <div id="sheet-backdrop" hidden></div>
+  <div id="sheet" hidden role="dialog" aria-label="부품 편집">
+    <div id="sheet-handle"></div>
+    <div id="sheet-title"></div>
+    <div id="sheet-body"></div>
+    <div id="sheet-actions">
+      <button id="btn-flip" class="tap-target" hidden>극성 바꾸기</button>
+      <button id="btn-toggle-switch" class="tap-target" hidden></button>
+      <button id="btn-delete" class="tap-target danger">삭제</button>
+      <button id="btn-sheet-close" class="tap-target">닫기</button>
+    </div>
+  </div>
+
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

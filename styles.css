@@ -1,0 +1,276 @@
+:root {
+  color-scheme: light;
+  --bg: #f8fafc;
+  --panel: #ffffff;
+  --border: #e2e8f0;
+  --text: #334155;
+  --accent: #2563eb;
+  --accent-bg: #eff6ff;
+  --danger: #dc2626;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden; /* 가로·세로 스크롤 금지 — 이 앱은 화면 하나로 완결된다 */
+  overscroll-behavior: none;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  width: 100vw;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+/* --- 상단 바 --- */
+#topbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+#topbar .spacer { flex: 1; }
+
+.icon-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+.icon-btn:disabled { opacity: 0.4; cursor: default; }
+.icon-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.icon-btn svg { flex-shrink: 0; }
+
+.preset-wrap { position: relative; }
+.menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  z-index: 30;
+  overflow: hidden;
+}
+.menu button {
+  all: unset;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-size: 14px;
+}
+.menu button:hover, .menu button:focus-visible { background: var(--accent-bg); }
+
+/* --- 본문: 팔레트 + 캔버스 --- */
+#main-row {
+  display: flex;
+  flex-direction: column-reverse; /* 팔레트가 아래(엄지 닿는 위치) */
+  flex: 1;
+  min-height: 0;
+}
+
+#board-wrap {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+#board {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: block;
+  touch-action: none; /* 브라우저 제스처(스크롤·줌)와 충돌 방지 */
+  background: var(--bg);
+}
+
+#hint-bar {
+  margin: 0;
+  padding: 8px 12px;
+  min-height: 20px;
+  font-size: 13px;
+  text-align: center;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+#hint-bar[data-level="error"] { color: var(--danger); font-weight: 600; }
+#hint-bar[data-level="warn"] { color: #b45309; font-weight: 600; }
+#hint-bar[data-level="info"] { color: #475569; }
+
+/* --- 팔레트 --- */
+#palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  flex-shrink: 0;
+  justify-content: center;
+}
+
+.palette-btn {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 64px;
+  height: 56px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--panel);
+}
+.palette-btn .swatch {
+  width: 22px;
+  height: 6px;
+  border-radius: 3px;
+}
+.palette-btn.selected {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+
+/* --- 하단 시트(부품 편집) --- */
+#sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.25);
+  z-index: 40;
+}
+#sheet {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 50;
+  background: var(--panel);
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  box-shadow: 0 -8px 24px rgba(0,0,0,0.15);
+  padding: 8px 16px calc(12px + env(safe-area-inset-bottom));
+  max-height: 60dvh;
+  overflow-y: auto;
+}
+#sheet-handle {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  margin: 4px auto 10px;
+}
+#sheet-title { font-weight: 700; font-size: 15px; margin-bottom: 8px; }
+#sheet-body { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.sheet-info { font-size: 14px; color: var(--text); padding: 8px 0; }
+
+.value-btn {
+  all: unset;
+  box-sizing: border-box;
+  min-width: 56px;
+  height: 44px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.value-btn.selected { border-color: var(--accent); background: var(--accent-bg); color: var(--accent); font-weight: 700; }
+
+#sheet-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+#sheet-actions button {
+  all: unset;
+  box-sizing: border-box;
+  height: 44px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 14px;
+  flex: 1;
+  min-width: 88px;
+}
+#sheet-actions button.danger { color: var(--danger); border-color: #fecaca; }
+
+.tap-target { min-height: 44px; min-width: 44px; }
+
+/* --- 가로/태블릿: 팔레트를 왼쪽 세로 사이드바로 --- */
+@media (min-width: 640px) and (min-height: 480px) {
+  #main-row { flex-direction: row; }
+  #palette {
+    flex-direction: column;
+    border-top: none;
+    border-right: 1px solid var(--border);
+    justify-content: flex-start;
+    width: 84px;
+  }
+  .palette-btn { width: 100%; }
+}
+
+/* --- 납작한 임베드(예: 학습지 iframe, 세로 200px 안팎) --- */
+@media (max-height: 260px) {
+  #topbar { padding: 2px 4px; }
+  .icon-btn { height: 34px; padding: 0 8px; }
+  .icon-btn .btn-text { display: none; }
+  #hint-bar { display: none; }
+  #palette { padding: 4px; gap: 4px; }
+  .palette-btn { width: 44px; height: 40px; font-size: 10px; }
+  #btn-expand.primary {
+    background: var(--accent);
+    animation: none;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #0f172a;
+    --panel: #1e293b;
+    --border: #334155;
+    --text: #e2e8f0;
+    --accent: #60a5fa;
+    --accent-bg: #1e3a5f;
+  }
+  /* 캔버스 내부 그림은 밝은 배경을 전제로 그려지므로(부품 기호·글자색이 어두운 잉크색)
+     다크 모드에서도 캔버스만은 밝게 유지한다 — 나머지 UI 크롬만 다크 팔레트를 따른다. */
+  #board { background: #f8fafc; }
+}

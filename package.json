@@ -1,0 +1,6 @@
+{
+  "name": "circuit",
+  "private": true,
+  "description": "중학생용 간이 전기회로 시뮬레이터 — 빌드 도구 없는 순수 ES 모듈 정적 사이트",
+  "type": "module"
+}

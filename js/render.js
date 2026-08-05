@@ -1,0 +1,361 @@
+// 캔버스 렌더링. state를 읽기만 하고 아무것도 바꾸지 않는 순수 그리기 함수들이다 — 입력 처리는
+// input.js, 상태 변경은 main.js가 맡는다.
+
+import {
+  GRID_COLS,
+  GRID_ROWS,
+  CELL_UNIT,
+  LOGICAL_MARGIN,
+  LOGICAL_WIDTH,
+  LOGICAL_HEIGHT,
+  NODE_RADIUS,
+  STACK_OFFSET,
+  COMPONENT_COLOR,
+  ZERO_CURRENT_EPS,
+  BULB_R,
+  BULB_RATED_POWER,
+} from './config.js'
+import { EDGE_LIST, canPlace } from './model.js'
+
+export function computeLayout(cssWidth, cssHeight) {
+  const scale = Math.min(cssWidth / LOGICAL_WIDTH, cssHeight / LOGICAL_HEIGHT)
+  const offsetX = (cssWidth - LOGICAL_WIDTH * scale) / 2
+  const offsetY = (cssHeight - LOGICAL_HEIGHT * scale) / 2
+  return { scale, offsetX, offsetY }
+}
+
+export function nodePoint(r, c) {
+  return { x: LOGICAL_MARGIN + c * CELL_UNIT, y: LOGICAL_MARGIN + r * CELL_UNIT }
+}
+
+export function logicalToScreen(layout, x, y) {
+  return { x: layout.offsetX + x * layout.scale, y: layout.offsetY + y * layout.scale }
+}
+
+export function screenToLogical(layout, x, y) {
+  return { x: (x - layout.offsetX) / layout.scale, y: (y - layout.offsetY) / layout.scale }
+}
+
+function perpUnit(p1, p2) {
+  const dx = p2.x - p1.x
+  const dy = p2.y - p1.y
+  const len = Math.hypot(dx, dy) || 1
+  return { x: -dy / len, y: dx / len }
+}
+
+/** 간선의 두 노드 좌표와 슬롯 인덱스·전체 슬롯 수를 받아, 그 슬롯이 실제로 그려질 두 끝점을 낸다.
+ *  슬롯이 1개뿐이면 간선 그대로, 2개면 수직으로 서로 반대 방향 오프셋을 줘 병렬로 보이게 한다. */
+function slotEndpoints(p1, p2, slotIndex, slotCount) {
+  if (slotCount <= 1) return [p1, p2]
+  const perp = perpUnit(p1, p2)
+  const sign = slotIndex === 0 ? -1 : 1
+  const off = (STACK_OFFSET / 2) * sign
+  return [
+    { x: p1.x + perp.x * off, y: p1.y + perp.y * off },
+    { x: p2.x + perp.x * off, y: p2.y + perp.y * off },
+  ]
+}
+
+export function draw(ctx, cssWidth, cssHeight, model, state) {
+  const layout = computeLayout(cssWidth, cssHeight)
+  ctx.clearRect(0, 0, cssWidth, cssHeight)
+  ctx.save()
+  ctx.translate(layout.offsetX, layout.offsetY)
+  ctx.scale(layout.scale, layout.scale)
+
+  drawNodeDots(ctx)
+
+  for (const edge of EDGE_LIST) {
+    const items = model.items.get(edge.key) ?? []
+    const p1 = nodePoint(edge.r, edge.c)
+    const p2 = edge.orientation === 'h' ? nodePoint(edge.r, edge.c + 1) : nodePoint(edge.r + 1, edge.c)
+
+    const placeable = state.placingType ? canPlace(model, edge.key, state.placingType) : false
+    if (placeable) drawPlaceableHighlight(ctx, p1, p2)
+
+    if (items.length === 0) {
+      drawEmptyGuide(ctx, p1, p2)
+      continue
+    }
+
+    items.forEach((item, idx) => {
+      const [a, b] = slotEndpoints(p1, p2, idx, items.length)
+      const current = state.current?.get(item.uid) ?? 0
+      const selected = state.selectedUid === item.uid
+      drawComponent(ctx, item, a, b, current, selected, state.flowPhase ?? 0)
+    })
+  }
+
+  ctx.restore()
+}
+
+function drawNodeDots(ctx) {
+  ctx.fillStyle = '#cbd5e1'
+  for (let r = 0; r < GRID_ROWS; r++) {
+    for (let c = 0; c < GRID_COLS; c++) {
+      const { x, y } = nodePoint(r, c)
+      ctx.beginPath()
+      ctx.arc(x, y, NODE_RADIUS * 0.55, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  }
+}
+
+function drawEmptyGuide(ctx, p1, p2) {
+  ctx.save()
+  ctx.strokeStyle = '#e2e8f0'
+  ctx.lineWidth = 3
+  ctx.setLineDash([2, 10])
+  ctx.beginPath()
+  ctx.moveTo(p1.x, p1.y)
+  ctx.lineTo(p2.x, p2.y)
+  ctx.stroke()
+  ctx.restore()
+}
+
+function drawPlaceableHighlight(ctx, p1, p2) {
+  ctx.save()
+  ctx.strokeStyle = '#93c5fd'
+  ctx.lineWidth = 22
+  ctx.lineCap = 'round'
+  ctx.globalAlpha = 0.45
+  ctx.beginPath()
+  ctx.moveTo(p1.x, p1.y)
+  ctx.lineTo(p2.x, p2.y)
+  ctx.stroke()
+  ctx.restore()
+}
+
+function drawComponent(ctx, item, p1, p2, current, selected, flowPhase) {
+  const color = COMPONENT_COLOR[item.type] ?? '#334155'
+  ctx.save()
+
+  if (selected) {
+    ctx.strokeStyle = '#facc15'
+    ctx.lineWidth = 14
+    ctx.lineCap = 'round'
+    ctx.globalAlpha = 0.5
+    ctx.beginPath()
+    ctx.moveTo(p1.x, p1.y)
+    ctx.lineTo(p2.x, p2.y)
+    ctx.stroke()
+    ctx.globalAlpha = 1
+  }
+
+  // 리드선(연결 부분)은 항상 실선으로 먼저 그린다. 중앙 기호가 그 위에 얹힌다.
+  ctx.strokeStyle = color
+  ctx.lineWidth = 4
+  ctx.lineCap = 'round'
+  ctx.beginPath()
+  ctx.moveTo(p1.x, p1.y)
+  ctx.lineTo(p2.x, p2.y)
+  ctx.stroke()
+
+  switch (item.type) {
+    case 'wire':
+      break // 리드선 자체가 도선의 전부
+    case 'battery':
+      drawBattery(ctx, item, p1, p2, color)
+      break
+    case 'resistor':
+      drawResistor(ctx, p1, p2, color, `${item.value}Ω`)
+      break
+    case 'bulb':
+      drawBulb(ctx, p1, p2, color, current)
+      break
+    case 'switch':
+      drawSwitch(ctx, p1, p2, color, item.closed)
+      break
+    case 'ammeter':
+      drawMeter(ctx, p1, p2, color, 'A', current, 'A')
+      break
+    case 'voltmeter':
+      drawMeter(ctx, p1, p2, color, 'V', current * 1_000_000, 'V')
+      break
+  }
+
+  if (Math.abs(current) > ZERO_CURRENT_EPS) drawFlowAnimation(ctx, p1, p2, current, flowPhase, color)
+
+  ctx.restore()
+}
+
+function mid(p1, p2, t = 0.5) {
+  return { x: p1.x + (p2.x - p1.x) * t, y: p1.y + (p2.y - p1.y) * t }
+}
+
+function drawBattery(ctx, item, p1, p2, color) {
+  const perp = perpUnit(p1, p2)
+  const c = mid(p1, p2)
+  const dx = (p2.x - p1.x) / Math.hypot(p2.x - p1.x, p2.y - p1.y || 1)
+  const dy = (p2.y - p1.y) / Math.hypot(p2.x - p1.x, p2.y - p1.y || 1)
+  const gap = 5
+  // flipped=false → p2(v) 쪽이 +(긴 막대), flipped=true → p1(u) 쪽이 +
+  const plusAtP2 = !item.flipped
+  const longSide = plusAtP2 ? 1 : -1 // +1: p2 방향에 긴 막대
+  ctx.strokeStyle = color
+  ctx.fillStyle = color
+  ctx.lineWidth = 4
+  // 짧고 굵은 막대(−)
+  const shortLen = 14
+  const shortCenter = { x: c.x - dx * gap * -longSide, y: c.y - dy * gap * -longSide }
+  ctx.beginPath()
+  ctx.moveTo(shortCenter.x - perp.x * shortLen, shortCenter.y - perp.y * shortLen)
+  ctx.lineTo(shortCenter.x + perp.x * shortLen, shortCenter.y + perp.y * shortLen)
+  ctx.lineWidth = 7
+  ctx.stroke()
+  // 길고 얇은 막대(+)
+  const longLen = 22
+  const longCenter = { x: c.x + dx * gap * -longSide, y: c.y + dy * gap * -longSide }
+  ctx.beginPath()
+  ctx.moveTo(longCenter.x - perp.x * longLen, longCenter.y - perp.y * longLen)
+  ctx.lineTo(longCenter.x + perp.x * longLen, longCenter.y + perp.y * longLen)
+  ctx.lineWidth = 3
+  ctx.stroke()
+
+  drawLabel(ctx, `${item.value}V`, c, perp, 30)
+  drawLabel(ctx, '+', { x: longCenter.x, y: longCenter.y }, perp, 16, 12)
+}
+
+function drawResistor(ctx, p1, p2, color, label) {
+  const len = Math.hypot(p2.x - p1.x, p2.y - p1.y)
+  const ux = (p2.x - p1.x) / len
+  const uy = (p2.y - p1.y) / len
+  const perp = perpUnit(p1, p2)
+  const bodyLen = Math.min(48, len * 0.6)
+  const start = mid(p1, p2, 0.5 - bodyLen / 2 / len)
+  const zigzags = 6
+  const amp = 10
+  ctx.strokeStyle = color
+  ctx.lineWidth = 4
+  ctx.beginPath()
+  ctx.moveTo(start.x, start.y)
+  for (let i = 1; i <= zigzags; i++) {
+    const t = i / zigzags
+    const along = { x: start.x + ux * bodyLen * t, y: start.y + uy * bodyLen * t }
+    const side = i % 2 === 1 ? 1 : -1
+    ctx.lineTo(along.x + perp.x * amp * side, along.y + perp.y * amp * side)
+  }
+  ctx.stroke()
+  drawLabel(ctx, label, mid(p1, p2), perp, 26)
+}
+
+function drawBulb(ctx, p1, p2, color, current) {
+  const c = mid(p1, p2)
+  const power = current * current * BULB_R
+  const brightness = Math.max(0, Math.min(1, power / BULB_RATED_POWER))
+  const r = 16
+  if (brightness > 0.02) {
+    const glowR = r + 18 * brightness
+    const grad = ctx.createRadialGradient(c.x, c.y, r * 0.4, c.x, c.y, glowR)
+    grad.addColorStop(0, `rgba(250, 204, 21, ${0.55 * brightness + 0.15})`)
+    grad.addColorStop(1, 'rgba(250, 204, 21, 0)')
+    ctx.fillStyle = grad
+    ctx.beginPath()
+    ctx.arc(c.x, c.y, glowR, 0, Math.PI * 2)
+    ctx.fill()
+  }
+  ctx.fillStyle = brightness > 0.02 ? `rgba(254, 240, 138, ${0.4 + 0.6 * brightness})` : '#f8fafc'
+  ctx.strokeStyle = color
+  ctx.lineWidth = 3
+  ctx.beginPath()
+  ctx.arc(c.x, c.y, r, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.stroke()
+  // 전구 기호(원 안의 X)
+  const k = r * 0.7
+  ctx.beginPath()
+  ctx.moveTo(c.x - k, c.y - k)
+  ctx.lineTo(c.x + k, c.y + k)
+  ctx.moveTo(c.x + k, c.y - k)
+  ctx.lineTo(c.x - k, c.y + k)
+  ctx.stroke()
+}
+
+function drawSwitch(ctx, p1, p2, color, closed) {
+  const c = mid(p1, p2)
+  const perp = perpUnit(p1, p2)
+  ctx.fillStyle = color
+  ctx.strokeStyle = color
+  ctx.lineWidth = 4
+  // 접점 두 개
+  const gap1 = mid(p1, p2, 0.5 - 0.22)
+  const gap2 = mid(p1, p2, 0.5 + 0.22)
+  ctx.beginPath()
+  ctx.arc(gap1.x, gap1.y, 4, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.beginPath()
+  ctx.arc(gap2.x, gap2.y, 4, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.beginPath()
+  if (closed) {
+    ctx.moveTo(gap1.x, gap1.y)
+    ctx.lineTo(gap2.x, gap2.y)
+  } else {
+    ctx.moveTo(gap1.x, gap1.y)
+    ctx.lineTo(gap2.x - perp.x * 18, gap2.y - perp.y * 18)
+  }
+  ctx.stroke()
+  drawLabel(ctx, closed ? '닫힘' : '열림', c, perp, 26, undefined, true)
+}
+
+function drawMeter(ctx, p1, p2, color, letter, reading, unit) {
+  const c = mid(p1, p2)
+  const r = 15
+  ctx.fillStyle = '#fff'
+  ctx.strokeStyle = color
+  ctx.lineWidth = 3
+  ctx.beginPath()
+  ctx.arc(c.x, c.y, r, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.stroke()
+  ctx.fillStyle = color
+  ctx.font = 'bold 18px system-ui, sans-serif'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(letter, c.x, c.y + 1)
+  const perp = perpUnit(p1, p2)
+  // 계기판은 크기(절댓값)만 보여준다 — 방향은 전류 애니메이션이 화살처럼 흐르는 방향으로 알려준다.
+  // 부호까지 보여주면 중학생에게는 "음수 전류"가 오히려 혼란스럽다.
+  const magnitude = Math.abs(reading)
+  const rounded = magnitude < 0.001 ? '0' : magnitude.toFixed(magnitude >= 10 ? 1 : 2)
+  drawLabel(ctx, `${rounded}${unit}`, c, perp, 28)
+}
+
+function drawLabel(ctx, text, center, perp, offset, fontSize = 15, small = false) {
+  ctx.save()
+  ctx.font = `${small ? 'bold ' : ''}${fontSize}px system-ui, sans-serif`
+  ctx.fillStyle = '#334155'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  const x = center.x + perp.x * offset
+  const y = center.y + perp.y * offset
+  // 가독성을 위한 흰 배경
+  const w = ctx.measureText(text).width + 8
+  ctx.fillStyle = 'rgba(255,255,255,0.85)'
+  ctx.fillRect(x - w / 2, y - fontSize / 2 - 2, w, fontSize + 4)
+  ctx.fillStyle = '#334155'
+  ctx.fillText(text, x, y)
+  ctx.restore()
+}
+
+function drawFlowAnimation(ctx, p1, p2, current, flowPhase, color) {
+  const len = Math.hypot(p2.x - p1.x, p2.y - p1.y)
+  if (len < 1) return
+  const forward = current > 0
+  const from = forward ? p1 : p2
+  const to = forward ? p2 : p1
+  const dashLen = 8
+  const gapLen = 14
+  const speed = Math.min(Math.abs(current) * 40, 120) // px/s 상당(논리 단위)
+  ctx.save()
+  ctx.strokeStyle = color
+  ctx.globalAlpha = 0.85
+  ctx.lineWidth = 3
+  ctx.setLineDash([dashLen, gapLen])
+  ctx.lineDashOffset = -flowPhase * speed
+  ctx.beginPath()
+  ctx.moveTo(from.x, from.y)
+  ctx.lineTo(to.x, to.y)
+  ctx.stroke()
+  ctx.restore()
+}
