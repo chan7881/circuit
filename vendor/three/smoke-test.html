@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>three.js smoke test</title>
+<style>html,body{margin:0;height:100%;background:#222}canvas{display:block}</style>
+<script type="importmap">
+{ "imports": { "three": "./three.module.js" } }
+</script>
+</head>
+<body>
+<script type="module">
+import * as THREE from 'three'
+import { OrbitControls } from './OrbitControls.js'
+
+const scene = new THREE.Scene()
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 100)
+camera.position.set(3, 3, 3)
+
+const renderer = new THREE.WebGLRenderer({ antialias: true })
+renderer.setSize(innerWidth, innerHeight)
+document.body.appendChild(renderer.domElement)
+
+const light = new THREE.DirectionalLight(0xffffff, 1)
+light.position.set(2, 4, 3)
+scene.add(light)
+scene.add(new THREE.AmbientLight(0x888888))
+
+const cube = new THREE.Mesh(
+  new THREE.BoxGeometry(1, 1, 1),
+  new THREE.MeshStandardMaterial({ color: 0x4da3ff })
+)
+scene.add(cube)
+
+const controls = new OrbitControls(camera, renderer.domElement)
+controls.enableDamping = true
+
+window.__smoke = { ok: true, THREE_REVISION: THREE.REVISION, controlsType: controls.constructor.name }
+
+function frame() {
+  cube.rotation.y += 0.01
+  controls.update()
+  renderer.render(scene, camera)
+  requestAnimationFrame(frame)
+}
+frame()
+</script>
+</body>
+</html>

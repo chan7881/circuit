@@ -1,18 +1,17 @@
-// 부트스트랩: DOM 이벤트 ↔ 순수 모델 ↔ 그리기. 이 파일만 DOM을 직접 건드린다.
+// 부트스트랩: DOM 이벤트 ↔ 순수 모델 ↔ three.js 장면. 이 파일만 DOM을 직접 건드린다.
 
 import { MAX_CURRENT, createModel, setMode, setOn, setDirection, setCurrent, compassPositions, needleAngle } from './model.js'
-import { computeLayout, draw } from './render.js'
+import { createScene } from './render.js'
 
 const model = createModel()
 const state = {
   showFieldLines: false,
-  time: 0,
-  /** 나침반마다 지금 화면에 그려지는 각도(라디안) — 목표 각도로 서서히 회전해 간다(아래 참고) */
+  /** 나침반마다 지금 그려지는 각도(라디안) — 목표 각도로 서서히 회전해 간다(아래 참고) */
   needleAngles: compassPositions(model).map(() => 0),
 }
 
 const canvas = document.getElementById('board')
-const ctx = canvas.getContext('2d')
+const scene = createScene(canvas)
 const hintBar = document.getElementById('hint-bar')
 const btnSwitch = document.getElementById('btn-switch')
 const btnFieldLines = document.getElementById('btn-fieldlines')
@@ -21,8 +20,8 @@ const currentButtons = document.getElementById('current-buttons')
 
 // 안내 문구는 "무엇을 해 보라"까지만. 관찰 결과는 학생이 스스로 말해야 한다.
 const HINTS = {
-  coil: '전류 방향과 세기를 바꾸며 나침반의 반응을 살펴보세요.',
-  wire: '전류 방향과 세기를 바꾸며 나침반의 반응을 살펴보세요. (도선이 화면과 수직으로 지나갑니다)',
+  coil: '전류 방향과 세기를 바꾸며 나침반의 반응을 살펴보세요. (화면을 손가락으로 끌면 시점을 돌릴 수 있어요)',
+  wire: '전류 방향과 세기를 바꾸며 나침반의 반응을 살펴보세요. (도선이 실험대를 수직으로 지나갑니다 · 손가락으로 시점을 돌릴 수 있어요)',
 }
 
 // --- 전류 세기 버튼 ---
@@ -98,10 +97,7 @@ document.getElementById('btn-expand').addEventListener('click', async () => {
 // --- 캔버스 크기 대응 ---
 function resizeCanvas() {
   const rect = canvas.getBoundingClientRect()
-  const dpr = Math.min(window.devicePixelRatio || 1, 3)
-  canvas.width = Math.max(1, Math.round(rect.width * dpr))
-  canvas.height = Math.max(1, Math.round(rect.height * dpr))
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  scene.resize(Math.max(1, rect.width), Math.max(1, rect.height))
 }
 new ResizeObserver(resizeCanvas).observe(canvas)
 window.addEventListener('orientationchange', resizeCanvas)
@@ -119,7 +115,6 @@ let lastTs = 0
 function frame(ts) {
   const dt = lastTs ? Math.min((ts - lastTs) / 1000, 0.1) : 0
   lastTs = ts
-  state.time += dt
 
   const positions = compassPositions(model)
   // 코일↔도선 전환 등으로 개수가 달라지면 배열을 다시 맞춘다(모자란 칸은 0으로 시작).
@@ -138,8 +133,8 @@ function frame(ts) {
     }
   })
 
-  const rect = canvas.getBoundingClientRect()
-  draw(ctx, rect.width, rect.height, model, positions, state.needleAngles, state)
+  scene.update(model, positions, state.needleAngles, state)
+  scene.renderFrame()
   requestAnimationFrame(frame)
 }
 
@@ -148,4 +143,4 @@ syncChips()
 setModeUI('coil')
 requestAnimationFrame(frame)
 
-window.__sim = { model, state, computeLayout }
+window.__sim = { model, state, scene }

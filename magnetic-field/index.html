@@ -6,6 +6,9 @@
 <title>코일 주위의 자기장</title>
 <meta name="description" content="중학생용 시뮬레이터 — 전류가 흐르는 코일·도선 주위에 놓인 나침반 8개의 반응을 관찰한다" />
 <link rel="stylesheet" href="../friction/styles.css" />
+<script type="importmap">
+{ "imports": { "three": "../vendor/three/three.module.js" } }
+</script>
 </head>
 <body>
 <div id="app">
@@ -23,7 +26,7 @@
   </header>
 
   <main id="board-wrap">
-    <canvas id="board" aria-label="코일 또는 도선 주위 나침반 8개의 반응을 보여주는 화면"></canvas>
+    <canvas id="board" aria-label="코일 또는 도선 주위 나침반 8개의 반응을 3D로 보여주는 화면 — 손가락으로 시점을 돌릴 수 있다"></canvas>
     <p id="hint-bar" role="status"></p>
   </main>
 
