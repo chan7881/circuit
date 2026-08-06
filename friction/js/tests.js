@@ -22,6 +22,7 @@ import {
   movePaddle,
   stepHockey,
   hockeyForceKind,
+  MAX_SPEED,
   FIELD,
   PUCK_R,
   PADDLE_R,
@@ -239,6 +240,22 @@ function run(h, seconds) {
     run(h, 8)
     assert(Number.isFinite(h.puck.x) && Number.isFinite(h.puck.y), `전하 (${pc},${kc}) 조합에서 좌표가 발산하지 않는다`)
   }
+})()
+
+// 18-2) 어떤 경우에도 퍽의 속력이 상한을 넘은 채로 프레임이 끝나지 않는다.
+//       채 충돌은 채의 속도를 퍽에 얹으므로, 손가락을 휙 그었을 때 여기서 터지기 쉽다.
+;(function speedNeverExceedsCap() {
+  const h = createHockeyModel()
+  setHockeyCharge(h, 'paddle', -1)
+  setHockeyCharge(h, 'puck', -1)
+  let worst = 0
+  for (let i = 0; i < 400; i++) {
+    // 매 프레임 채를 퍽 위로 순간이동시켜 채 속도를 최대로 키운다(최악의 경우)
+    movePaddle(h, h.puck.x, h.puck.y, 1 / 60)
+    stepHockey(h, 1 / 60)
+    worst = Math.max(worst, Math.hypot(h.puck.vx, h.puck.vy))
+  }
+  assert(worst <= MAX_SPEED + 0.001, `퍽의 속력이 상한을 넘지 않는다 (최고=${worst.toFixed(1)}, 상한=${MAX_SPEED})`)
 })()
 
 // 19) 초기화하면 처음 배치로 돌아온다

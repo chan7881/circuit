@@ -180,17 +180,21 @@ export const PADDLE_R = 34
  * 힘의 세기 계수 — 화면에서 "훅 밀리는" 느낌이 나도록 눈으로 맞춘 값이다.
  *
  * 처음 값(260000)은 채를 퍽에 바짝 붙였을 때만 반응이 보이고 조금만 떨어지면 거의 움직이지
- * 않아서 "전기의 종류를 바꿔도 차이가 안 보인다"는 지적을 받았다(2026-08-06). 5배로 키워
- * 조금 떨어진 거리에서도 밀고 당기는 것이 분명히 보이게 했다.
+ * 않아서 "전기의 종류를 바꿔도 차이가 안 보인다"는 지적을 받았다(2026-08-06). 5배(1300000)로
+ * 키웠지만 처음 배치된 거리(약 250px)에서는 여전히 거의 안 움직여서, 다시 3배 더 올렸다
+ * — 힘이 거리의 제곱에 반비례해서 조금만 멀어져도 급격히 약해지기 때문이다.
+ *
+ * 총 15배(260000 → 3900000). 가까이 붙었을 때 퍽이 세게 튕겨 나가는 것은 MAX_SPEED와
+ * 감쇠(DAMPING)가 잡아 준다 — 그래서 계수만 키워도 판 밖으로 날아가거나 발산하지 않는다.
  */
-const FORCE_K = 1300000
+const FORCE_K = 3900000
 /** 힘이 무한대로 튀는 것을 막는 최소 거리. 채와 퍽이 겹칠 때의 수치 폭발 방지. */
 const MIN_DIST = PUCK_R + PADDLE_R
 /** 공기 저항 — 없으면 퍽이 영원히 튕겨 다녀서 관찰이 어렵다. */
 const DAMPING = 0.6
 /** 벽·채에 부딪혔을 때 남는 속도 비율 */
 const RESTITUTION = 0.75
-const MAX_SPEED = 900
+export const MAX_SPEED = 900
 
 export function createHockeyModel() {
   return {
@@ -271,11 +275,7 @@ export function stepHockey(model, dt) {
   puck.vx *= decay
   puck.vy *= decay
 
-  const speed = Math.hypot(puck.vx, puck.vy)
-  if (speed > MAX_SPEED) {
-    puck.vx = (puck.vx / speed) * MAX_SPEED
-    puck.vy = (puck.vy / speed) * MAX_SPEED
-  }
+  clampSpeed(puck)
 
   // 3) 이동
   puck.x += puck.vx * step
@@ -304,7 +304,21 @@ export function stepHockey(model, dt) {
   // 5) 채와의 충돌 — 끌어당기는 조합에서는 퍽이 채에 붙어버리므로 물리적으로 막아준다.
   //    (전기력만 있으면 퍽이 채 안으로 파고들어 "닿았는데 통과한다"처럼 보인다.)
   resolvePaddleCollision(model)
+  // 충돌은 채의 속도를 퍽에 얹으므로 여기서 한 번 더 조인다. 손가락을 화면 끝에서 끝까지
+  // 한 프레임에 휙 그으면 채 속도가 엄청나게 커지는데, 그대로 두면 "속도는 언제나
+  // MAX_SPEED 이하"라는 약속이 프레임 끝에서 깨진다(다음 프레임에서 잡히긴 하지만,
+  // 그 사이에 상태를 읽는 쪽이 말도 안 되는 값을 보게 된다).
+  clampSpeed(puck)
   return model
+}
+
+/** 퍽의 속력을 MAX_SPEED 이하로 조인다. 방향은 그대로 두고 크기만 줄인다. */
+function clampSpeed(puck) {
+  const speed = Math.hypot(puck.vx, puck.vy)
+  if (speed > MAX_SPEED) {
+    puck.vx = (puck.vx / speed) * MAX_SPEED
+    puck.vy = (puck.vy / speed) * MAX_SPEED
+  }
 }
 
 function resolvePaddleCollision(model) {
