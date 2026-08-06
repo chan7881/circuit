@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>물의 흐름과 전류</title>
+<meta name="description" content="중학생용 시뮬레이터 — 물이 흐르는 길과 전기가 흐르는 길을 나란히 놓고 같은 조작으로 함께 바꿔 보며 전류·전압의 개념을 잡는다" />
+<link rel="stylesheet" href="../friction/styles.css" />
+</head>
+<body>
+<div id="app">
+
+  <header id="topbar">
+    <span class="title">물의 흐름과 전류</span>
+    <div class="spacer"></div>
+    <button id="btn-mapping" class="tap-target icon-btn" aria-label="대응 관계 보기">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12h6"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="12" r="3"/></svg>
+      <span class="btn-text">대응 관계</span>
+    </button>
+    <button id="btn-expand" class="tap-target icon-btn primary" aria-label="크게 보기">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
+      <span class="btn-text">크게 보기</span>
+    </button>
+  </header>
+
+  <main id="board-wrap">
+    <canvas id="board" aria-label="물의 흐름과 전기의 흐름을 나란히 보여주는 화면"></canvas>
+    <p id="hint-bar" role="status"></p>
+  </main>
+
+  <nav class="controls" aria-label="조작">
+    <div class="ctrl-group">
+      <span class="ctrl-label">펌프 · 전지</span>
+      <div class="btn-row" id="pump-buttons"></div>
+    </div>
+
+    <div class="ctrl-group">
+      <span class="ctrl-label">관 굵기 · 저항</span>
+      <div class="btn-row" id="pipe-buttons"></div>
+    </div>
+
+    <div class="ctrl-group">
+      <button id="btn-gate" class="chip tap-target"></button>
+    </div>
+  </nav>
+
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
