@@ -40,7 +40,7 @@ const SWING_GAP_Y = PIVOT_Y - COIL_LEN // 아래 가로 도선의 높이(= 말�
 
 // ── 모드 B(전동기) 배치 ──
 const MOTOR_CENTER_Y = 0.95
-const MOTOR_MAGNET_X = 0.57
+const MOTOR_MAGNET_X = 0.66
 
 export function createScene(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true })
@@ -79,6 +79,49 @@ export function createScene(canvas) {
 
   const metalMat = new THREE.MeshStandardMaterial({ color: '#94a3b8', roughness: 0.6 })
   const copperMat = new THREE.MeshStandardMaterial({ color: COPPER, roughness: 0.45, metalness: 0.3 })
+
+  // ── N·S 글자 표시 ────────────────────────────────────────────────
+  //
+  // three.js에는 글자를 그리는 기능이 없어서, 화면 밖 캔버스에 글자를 그려 텍스처로 쓴다.
+  // (페이지의 DOM을 건드리는 게 아니라 그림을 그릴 종이를 하나 만드는 것뿐이다.)
+  // 스프라이트는 항상 카메라를 향하므로 시점을 어떻게 돌려도 글자가 바로 읽힌다.
+  function makeLetterTexture(letter, color) {
+    const c = document.createElement('canvas')
+    c.width = c.height = 128
+    const g = c.getContext('2d')
+    g.fillStyle = 'rgba(255,255,255,0.92)'
+    g.beginPath()
+    g.arc(64, 64, 60, 0, Math.PI * 2)
+    g.fill()
+    g.strokeStyle = color
+    g.lineWidth = 7
+    g.stroke()
+    g.fillStyle = color
+    g.font = 'bold 88px system-ui, sans-serif'
+    g.textAlign = 'center'
+    g.textBaseline = 'middle'
+    g.fillText(letter, 64, 70)
+    const tex = new THREE.CanvasTexture(c)
+    tex.colorSpace = THREE.SRGBColorSpace
+    return tex
+  }
+  const TEX_N = makeLetterTexture('N', '#b91c1c')
+  const TEX_S = makeLetterTexture('S', '#1d4ed8')
+
+  /** 자석 극에 붙이는 N/S 딱지. setPole('N'|'S')로 나중에 바꿀 수 있다. */
+  function makePoleLabel(parent, x, y, z, size = 0.17) {
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX_N, depthTest: false }))
+    sprite.position.set(x, y, z)
+    sprite.scale.set(size, size, size)
+    sprite.renderOrder = 10 // 자석 뒤에 숨지 않도록 항상 위에 그린다
+    parent.add(sprite)
+    return {
+      setPole(p) {
+        sprite.material.map = p === 'N' ? TEX_N : TEX_S
+        sprite.material.needsUpdate = true
+      },
+    }
+  }
 
   /**
    * 네모난 코일 한 개(두 세로변 + 아래 가로변)를 만들어 그룹으로 돌려준다. 두 모드가 같은
@@ -167,6 +210,12 @@ export function createScene(canvas) {
     }
     horseshoe.userData.poles = poles
     horseshoe.userData.gapHalf = GAP_HALF
+    // 말굽자석은 자석 하나를 U자로 구부린 것이라 두 극이 이미 함께 보인다 — 글자만 붙여
+    // 어느 쪽이 N인지 분명히 한다.
+    horseshoe.userData.labels = [
+      makePoleLabel(horseshoe, 0, GAP_HALF + YOKE_T + 0.13, 0.42, 0.16), // 위
+      makePoleLabel(horseshoe, 0, -(GAP_HALF + YOKE_T) - 0.13, 0.42, 0.16), // 아래
+    ]
 
     // 자석 받침 — 자석이 공중에 떠 있어 보이지 않게 실험대까지 기둥을 내린다
     const foot = new THREE.Mesh(
@@ -182,17 +231,40 @@ export function createScene(canvas) {
   scene.add(motorScene)
 
   // 마주 보는 두 자석(N·S) — 자기장이 이 사이를 가로로 지난다
+  //
+  // ⚠️ 자석 하나를 통째로 한 색(N만 또는 S만)으로 칠하면 **홀극(monopole)** 처럼 보여
+  //    "N극만 있는 자석"이라는 오개념을 심을 수 있다. 자석은 언제나 두 극이 함께 있으므로,
+  //    막대자석 하나를 안쪽 절반·바깥쪽 절반 두 색으로 나눠 칠하고 N/S 글자를 붙인다.
+  //    코일에 영향을 주는 것은 **마주 보는 안쪽 극**이다.
+  // 두 극이 각각 하나의 덩어리로 또렷이 보이도록 폭을 넉넉히 준다 — N/S 딱지도 서로 겹치지
+  // 않을 만큼 떨어뜨릴 수 있어야 한다.
+  const MAG_W = 0.34
   const motorMagnets = []
   for (const sx of [-1, 1]) {
-    const mag = new THREE.Mesh(
-      // 자석은 코일이 도는 원(반지름 COIL_HALF_W)보다 낮게 만든다 — 안 그러면 자석이
-      // 코일을 가려서 무엇이 도는지 안 보인다.
-      new THREE.BoxGeometry(0.14, 0.44, 0.66),
-      new THREE.MeshStandardMaterial({ color: N_COLOR }),
-    )
-    mag.position.set(sx * MOTOR_MAGNET_X, MOTOR_CENTER_Y, 0)
-    motorScene.add(mag)
-    motorMagnets.push(mag)
+    const group = new THREE.Group()
+    group.position.set(sx * MOTOR_MAGNET_X, MOTOR_CENTER_Y, 0)
+    motorScene.add(group)
+
+    // 자석은 코일이 도는 원(반지름 COIL_HALF_W)보다 낮게 만든다 — 안 그러면 자석이
+    // 코일을 가려서 무엇이 도는지 안 보인다.
+    const halves = {}
+    for (const side of ['inner', 'outer']) {
+      // inner = 가운데(코일) 쪽 절반, outer = 바깥쪽 절반
+      const dir = side === 'inner' ? -sx : sx
+      const half = new THREE.Mesh(
+        new THREE.BoxGeometry(MAG_W / 2, 0.44, 0.66),
+        new THREE.MeshStandardMaterial({ color: N_COLOR }),
+      )
+      half.position.x = dir * MAG_W / 4
+      group.add(half)
+      halves[side] = half
+    }
+    const labels = {
+      inner: makePoleLabel(group, -sx * MAG_W / 4, 0.33, 0.36, 0.14),
+      outer: makePoleLabel(group, sx * MAG_W / 4, 0.33, 0.36, 0.14),
+    }
+    motorMagnets.push({ halves, labels })
+
     // 자석 받침
     const foot = new THREE.Mesh(new THREE.BoxGeometry(0.2, MOTOR_CENTER_Y - 0.22, 0.22), metalMat)
     foot.position.set(sx * MOTOR_MAGNET_X, (MOTOR_CENTER_Y - 0.22) / 2, 0)
@@ -266,41 +338,67 @@ export function createScene(canvas) {
   }
 
   // ── 보조 화살표(I·B·F·τ) ─────────────────────────────────────────
-  function makeArrow(color) {
-    const a = new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), new THREE.Vector3(), 0.3, color, 0.1, 0.07)
-    scene.add(a)
-    return a
+  //
+  // three.js가 기본으로 주는 ArrowHelper는 몸통을 **선(Line)** 으로 그려서 아무리 설정해도
+  // 1픽셀 굵기라 잘 안 보인다. 그래서 원기둥(몸통) + 원뿔(머리)로 직접 만들어 굵기를
+  // 마음대로 정한다. 기본 방향은 +Y이고, set()에서 원하는 방향으로 회전시킨다.
+  function makeArrow(color, shaftR = 0.032) {
+    const mat = new THREE.MeshStandardMaterial({ color })
+    const HEAD_H = shaftR * 4.2
+    const g = new THREE.Group()
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(shaftR, shaftR, 1, 14), mat)
+    const head = new THREE.Mesh(new THREE.ConeGeometry(shaftR * 2.1, HEAD_H, 16), mat)
+    g.add(shaft, head)
+    g.visible = false
+    scene.add(g)
+    const UP = new THREE.Vector3(0, 1, 0)
+    return {
+      set(origin, dir, length) {
+        if (length <= 1e-4 || dir.lengthSq() < 1e-9) {
+          g.visible = false
+          return
+        }
+        g.visible = true
+        const headLen = Math.min(HEAD_H, length * 0.45)
+        const shaftLen = Math.max(1e-3, length - headLen)
+        shaft.scale.y = shaftLen
+        shaft.position.y = shaftLen / 2
+        head.scale.y = headLen / HEAD_H
+        head.position.y = shaftLen + headLen / 2
+        g.position.copy(origin)
+        g.quaternion.setFromUnitVectors(UP, dir.clone().normalize())
+      },
+      hide() {
+        g.visible = false
+      },
+    }
   }
+  // 전류 화살표는 도선과 **같은 축에** 놓이므로 도선(WIRE_R)보다 굵어야 도선 속에 파묻히지
+  // 않고 밖에서 보인다. 나머지는 빈 공간에 그려지므로 조금 가늘어도 된다.
+  const CURRENT_SHAFT_R = WIRE_R * 1.35
   const arrows = {
     // 그네 모드
-    swingI: makeArrow(CURRENT_COLOR),
+    swingI: makeArrow(CURRENT_COLOR, CURRENT_SHAFT_R),
     swingB1: makeArrow(FIELD_COLOR),
     swingB2: makeArrow(FIELD_COLOR),
-    swingF: makeArrow(FORCE_COLOR),
+    swingF: makeArrow(FORCE_COLOR, 0.036),
     // 전동기 모드 — 코일 양쪽 변에 하나씩
     motorB1: makeArrow(FIELD_COLOR),
     motorB2: makeArrow(FIELD_COLOR),
-    motorIa: makeArrow(CURRENT_COLOR),
-    motorIb: makeArrow(CURRENT_COLOR),
-    motorFa: makeArrow(FORCE_COLOR),
-    motorFb: makeArrow(FORCE_COLOR),
+    motorIa: makeArrow(CURRENT_COLOR, CURRENT_SHAFT_R),
+    motorIb: makeArrow(CURRENT_COLOR, CURRENT_SHAFT_R),
+    motorFa: makeArrow(FORCE_COLOR, 0.036),
+    motorFb: makeArrow(FORCE_COLOR, 0.036),
     motorTa: makeArrow(TORQUE_COLOR),
     motorTb: makeArrow(TORQUE_COLOR),
   }
 
   function placeArrow(arrow, origin, dir, length) {
-    if (length <= 1e-4 || dir.lengthSq() < 1e-9) {
-      arrow.visible = false
-      return
-    }
-    arrow.visible = true
-    arrow.position.copy(origin)
-    arrow.setDirection(dir.clone().normalize())
-    arrow.setLength(length, Math.min(0.12, length * 0.35), Math.min(0.08, length * 0.22))
+    arrow.set(origin, dir, length)
   }
 
   function hideAll() {
-    for (const a of Object.values(arrows)) a.visible = false
+    for (const a of Object.values(arrows)) a.hide()
   }
 
   /**
@@ -327,6 +425,9 @@ export function createScene(canvas) {
       const [upper, lower] = horseshoe.userData.poles
       lower.material.color.set(pol > 0 ? N_COLOR : S_COLOR)
       upper.material.color.set(pol > 0 ? S_COLOR : N_COLOR)
+      const [upperLabel, lowerLabel] = horseshoe.userData.labels
+      lowerLabel.setPole(pol > 0 ? 'N' : 'S')
+      upperLabel.setPole(pol > 0 ? 'S' : 'N')
 
       if (showHelper && on) {
         const gapHalf = horseshoe.userData.gapHalf
@@ -338,12 +439,13 @@ export function createScene(canvas) {
           const from = new THREE.Vector3(sx * 0.09, SWING_GAP_Y - gapHalf * 0.9, 0)
           placeArrow(arrows[key], from, new THREE.Vector3(0, pol, 0), gapHalf * 1.8)
         }
-        // I — 아래 가로 도선을 따라 흐르는 전류
+        // I — 아래 가로 도선을 따라 흐르는 전류. 도선과 같은 축에, 도선보다 굵고 길게 그려
+        // 도선에 파묻히지 않게 한다(머리가 도선 끝 밖으로 나오도록).
         placeArrow(
           arrows.swingI,
-          wire.clone().add(new THREE.Vector3(-model.direction * COIL_HALF_W * 0.8, 0, 0)),
+          wire.clone().add(new THREE.Vector3(-model.direction * COIL_HALF_W, 0, 0)),
           new THREE.Vector3(model.direction, 0, 0),
-          COIL_HALF_W * 1.5,
+          COIL_HALF_W * 2.3,
         )
         // F — 전류(x)와 자기장(y)에 모두 수직인 방향(z). 세기는 전류에 비례.
         placeArrow(arrows.swingF, wire, new THREE.Vector3(0, 0, model.direction * pol), 0.2 + 0.35 * level)
@@ -352,9 +454,17 @@ export function createScene(canvas) {
       // ── 직류 전동기 ──
       rotor.rotation.z = model.motorAngle
 
-      // 좌우 자석 색 — polarity가 +1이면 왼쪽이 N(자기장이 왼→오, 즉 +x)
-      motorMagnets[0].material.color.set(pol > 0 ? N_COLOR : S_COLOR)
-      motorMagnets[1].material.color.set(pol > 0 ? S_COLOR : N_COLOR)
+      // 좌우 자석의 극 배치. 두 자석 사이 자기장은 마주 보는 **안쪽 극**이 정한다 —
+      // polarity가 +1이면 왼쪽 자석의 안쪽이 N이라 자기장이 왼→오(+x)로 흐른다.
+      // 자석 하나에는 언제나 N과 S가 함께 있으므로 바깥쪽 절반은 항상 반대 극이다.
+      const leftInnerIsN = pol > 0
+      for (const [i, innerIsN] of [[0, leftInnerIsN], [1, !leftInnerIsN]]) {
+        const mag = motorMagnets[i]
+        mag.halves.inner.material.color.set(innerIsN ? N_COLOR : S_COLOR)
+        mag.halves.outer.material.color.set(innerIsN ? S_COLOR : N_COLOR)
+        mag.labels.inner.setPole(innerIsN ? 'N' : 'S')
+        mag.labels.outer.setPole(innerIsN ? 'S' : 'N')
+      }
 
       // 정류자도 코일과 함께 돈다 — 브러시에 닿는 조각이 반 바퀴마다 바뀐다
       commutator.rotation.z = model.motorAngle
@@ -377,14 +487,17 @@ export function createScene(canvas) {
         const sideA = center.clone().add(armA)
         const sideB = center.clone().sub(armA)
 
-        // 코일 면이 자기장과 거의 수직인 죽은점 부근에서는 화살표가 겹쳐 읽기 어려워 숨긴다
-        // (자바실험실도 같은 이유로 |cos θ| < 0.3에서 감춘다)
+        // 코일 두 변이 거의 위아래로 겹쳐 보이는 각도에서는 화살표가 서로 포개져 읽기
+        // 어려워 숨긴다. 일시정지하고 어느 순간이든 관찰할 수 있어야 하므로, 자바실험실의
+        // 기준(0.3)보다 낮춰 정말 겹치는 구간에서만 감춘다.
         const facing = Math.abs(Math.cos(reducedMotorAngle(model)))
-        if (facing > 0.3) {
+        if (facing > 0.15) {
           // I — 두 변에 흐르는 전류는 서로 반대 방향(축 방향 ±z). 정류자가 반 바퀴마다 뒤집는다.
+          // 코일 변과 같은 축에, 변보다 굵고 길게 그려 도선에 파묻히지 않게 한다.
           const iSign = model.direction * commutatorPhase(model)
-          placeArrow(arrows.motorIa, sideA.clone().add(new THREE.Vector3(0, 0, -iSign * 0.3)), new THREE.Vector3(0, 0, iSign), 0.6)
-          placeArrow(arrows.motorIb, sideB.clone().add(new THREE.Vector3(0, 0, iSign * 0.3)), new THREE.Vector3(0, 0, -iSign), 0.6)
+          const iLen = COIL_LEN * 1.25
+          placeArrow(arrows.motorIa, sideA.clone().add(new THREE.Vector3(0, 0, -iSign * iLen / 2)), new THREE.Vector3(0, 0, iSign), iLen)
+          placeArrow(arrows.motorIb, sideB.clone().add(new THREE.Vector3(0, 0, iSign * iLen / 2)), new THREE.Vector3(0, 0, -iSign), iLen)
 
           // F — I×B. 두 변의 전류가 반대라 힘도 서로 반대 → 이것이 회전을 만든다.
           const fLen = 0.18 + 0.3 * level
@@ -409,13 +522,15 @@ export function createScene(canvas) {
    */
   function focusMode(mode) {
     if (mode === 'motor') {
-      // 전동기는 회전축(보는 사람 쪽 z축)에 가깝게, 살짝 위에서 내려다봐야 코일이 도는 게
-      // 잘 보인다 — 옆으로 많이 치우치면 자석이 코일을 가린다.
-      camera.position.set(1.05, 1.55, 2.5)
+      // 전동기는 회전축(보는 사람 쪽 z축)을 비스듬히 봐야 한다 — 축에 너무 가까우면 축을
+      // 따라 흐르는 전류 화살표가 앞뒤로 눌려 보이지 않고, 너무 옆이면 자석이 코일을 가린다.
+      camera.position.set(2.0, 1.9, 2.7)
       controls.target.set(0, 0.95, 0)
     } else {
-      // 그네는 위에 매달린 코일까지 들어와야 하니 조금 높고 멀리서.
-      camera.position.set(1.5, 1.4, 2.15)
+      // 그네는 위에 매달린 코일까지 들어와야 하니 조금 높고 멀리서. 가로(x)로 흐르는 전류와
+      // 앞뒤(z)로 밀리는 힘을 둘 다 비스듬히 보려면 x와 z 어느 한쪽으로 치우치면 안 된다 —
+      // 축 정면에서 보면 그 축 방향 화살표가 눌려서 안 보인다.
+      camera.position.set(2.1, 1.5, 1.75)
       controls.target.set(0, 0.88, 0)
     }
     controls.update()

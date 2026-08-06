@@ -13,13 +13,15 @@ import {
 import { createScene } from './render.js'
 
 const model = createModel()
-const state = { showHelper: false }
+const state = { showHelper: false, paused: false }
 
 const canvas = document.getElementById('board')
 const scene = createScene(canvas)
 const hintBar = document.getElementById('hint-bar')
 const btnSwitch = document.getElementById('btn-switch')
 const btnHelper = document.getElementById('btn-helper')
+const btnPause = document.getElementById('btn-pause')
+const pauseGroup = document.getElementById('pause-group')
 const directionButtons = document.getElementById('direction-buttons')
 const polarityButtons = document.getElementById('polarity-buttons')
 const currentButtons = document.getElementById('current-buttons')
@@ -27,7 +29,7 @@ const currentButtons = document.getElementById('current-buttons')
 // 안내 문구는 "무엇을 해 보라"까지만. 관찰 결과는 학생이 스스로 말해야 한다.
 const HINTS = {
   swing: '전류 방향과 자석 극 배치를 바꾸며 그네가 어느 쪽으로 흔들리는지 살펴보세요. (손가락으로 시점을 돌릴 수 있어요)',
-  motor: '전류 방향과 자석 극 배치를 바꾸며 전동기가 어느 방향으로 도는지 살펴보세요. (손가락으로 시점을 돌릴 수 있어요)',
+  motor: '전류 방향과 자석 극 배치를 바꾸며 전동기가 어느 방향으로 도는지 살펴보세요. 일시정지하면 그 순간의 화살표를 천천히 볼 수 있어요. (손가락으로 시점을 돌릴 수 있어요)',
 }
 
 // --- 전류 세기 버튼 ---
@@ -52,6 +54,11 @@ function setModeUI(mode) {
   document.getElementById('tab-swing').setAttribute('aria-selected', String(mode === 'swing'))
   document.getElementById('tab-motor').setAttribute('aria-selected', String(mode === 'motor'))
   hintBar.textContent = HINTS[mode]
+  // 일시정지는 계속 도는 전동기에서만 쓸모가 있다. 그네 모드로 넘어갈 때 멈춤을 풀지 않으면
+  // 버튼이 사라진 채로 그네가 얼어붙어 버린다.
+  pauseGroup.hidden = mode !== 'motor'
+  if (mode !== 'motor') state.paused = false
+  syncPause()
   scene.focusMode(mode)
 }
 document.getElementById('tab-swing').addEventListener('click', () => setModeUI('swing'))
@@ -83,6 +90,17 @@ for (const btn of polarityButtons.querySelectorAll('.chip')) {
 btnHelper.addEventListener('click', () => {
   state.showHelper = !state.showHelper
   btnHelper.classList.toggle('selected', state.showHelper)
+})
+
+// --- 일시정지 / 재생 (전동기 모드) ---
+function syncPause() {
+  btnPause.textContent = state.paused ? '다시 돌리기' : '일시정지'
+  btnPause.classList.toggle('selected', state.paused)
+  btnPause.setAttribute('aria-pressed', String(state.paused))
+}
+btnPause.addEventListener('click', () => {
+  state.paused = !state.paused
+  syncPause()
 })
 
 function syncChips() {
@@ -126,7 +144,8 @@ function frame(ts) {
   const dt = lastTs ? Math.min((ts - lastTs) / 1000, 0.1) : 0
   lastTs = ts
 
-  step(model, dt)
+  // 멈춰 있어도 그리기는 계속한다 — 그래야 멈춘 상태에서도 시점을 돌려 볼 수 있다.
+  if (!state.paused) step(model, dt)
   scene.update(model, state.showHelper)
   scene.renderFrame()
   requestAnimationFrame(frame)
