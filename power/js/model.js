@@ -29,13 +29,25 @@ export const APPLIANCES = [
 ]
 
 /**
- * 전기요금·온실가스 환산 계수.
- * 주택용 전기요금은 실제로는 누진 구간이 있지만, 이 화면의 목적은 요금을 정확히 맞히는 게
- * 아니라 "무엇을 켜면 확 늘어나는지" 비교하는 것이라 평균값 하나로 단순화했다.
+ * 요금 단가(원/kWh).
+ *
+ * **누진제를 일부러 반영하지 않은 평탄 단가다.** 실제 주택용 전기요금은 월 사용량이
+ * 200·400 kWh를 넘을 때마다 단가가 뛰고, 여기에 기본요금·부가세·전력산업기반기금이 더 붙는다.
+ * 그걸 다 넣으면 이 화면이 '요금 계산기'가 되어 버리는데, 성취기준 해설이 정량 계산을
+ * 지양하라고 못 박고 있다. 그래서 단가 하나로 단순화하고, 대신 화면에 누진제를 안 넣었다는
+ * 단서를 적어 학생이 실제 요금과 다르다는 것을 알게 한다(2026-08-06 사용자 결정).
+ *
+ * ⚠️ 학습지에서 학생이 가상의 요금제로 직접 계산해 보게 할 계획이므로, 그 단가와 이 값이
+ *    어긋나면 안 된다. 학습지를 고칠 때 이 상수도 같이 맞출 것.
  */
 export const WON_PER_KWH = 130
-/** 우리나라 전력 배출계수 어림값(kgCO₂/kWh) */
-export const GRAM_CO2_PER_KWH = 460
+
+/**
+ * 한 달을 몇 시간으로 볼지. "이 상태로 한 달 내내 쓰면"이 이 화면의 기준이다.
+ * 1시간 기준이면 요금이 몇 원 단위로 나와 차이가 눈에 안 들어온다 — 한 달로 늘리면
+ * 어떤 기구를 켜 두는 것이 얼마나 큰일인지가 숫자 크기로 바로 보인다.
+ */
+export const HOURS_PER_MONTH = 24 * 30
 
 export function createModel() {
   return {
@@ -89,19 +101,14 @@ export function standbyWatt(model) {
   return APPLIANCES.reduce((sum, a) => sum + (isOn(model, a.id) ? 0 : a.standby), 0)
 }
 
-/** 1시간 동안 썼을 때의 전력량(kWh) */
-export function kwhPerHour(model) {
-  return totalWatt(model) / 1000
+/** 이 상태로 한 달 내내 썼을 때의 전력량(kWh) */
+export function kwhPerMonth(model) {
+  return (totalWatt(model) * HOURS_PER_MONTH) / 1000
 }
 
-/** 1시간 요금(원). 정수로 반올림해 돌려준다. */
-export function wonPerHour(model) {
-  return Math.round(kwhPerHour(model) * WON_PER_KWH)
-}
-
-/** 1시간에 나오는 이산화 탄소(g) */
-export function gramCo2PerHour(model) {
-  return Math.round(kwhPerHour(model) * GRAM_CO2_PER_KWH)
+/** 한 달 요금(원). 누진제는 반영하지 않는다(위 WON_PER_KWH 주석 참고). */
+export function wonPerMonth(model) {
+  return Math.round(kwhPerMonth(model) * WON_PER_KWH)
 }
 
 /** 이 집이 한 번에 쓸 수 있는 최대치(모든 기구를 켰을 때) — 막대 그래프의 기준으로 쓴다 */

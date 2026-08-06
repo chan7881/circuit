@@ -10,9 +10,8 @@ import {
   applianceWatt,
   totalWatt,
   standbyWatt,
-  kwhPerHour,
-  wonPerHour,
-  gramCo2PerHour,
+  kwhPerMonth,
+  wonPerMonth,
   maxWatt,
 } from './model.js'
 import { drawCompare } from './render.js'
@@ -81,9 +80,9 @@ function syncHome() {
 
   const watt = totalWatt(model)
   document.getElementById('t-watt').textContent = `${watt.toLocaleString('ko-KR')} W`
-  document.getElementById('t-kwh').textContent = `${kwhPerHour(model).toFixed(2)} kWh`
-  document.getElementById('t-won').textContent = `${wonPerHour(model).toLocaleString('ko-KR')} 원`
-  document.getElementById('t-co2').textContent = `${gramCo2PerHour(model).toLocaleString('ko-KR')} g`
+  // 한 달 기준이라 자릿수가 커진다 — 소수점을 버리고 천 단위 구분만 넣는 편이 읽기 쉽다
+  document.getElementById('t-kwh').textContent = `${Math.round(kwhPerMonth(model)).toLocaleString('ko-KR')} kWh`
+  document.getElementById('t-won').textContent = `${wonPerMonth(model).toLocaleString('ko-KR')} 원`
   document.getElementById('t-bar').style.width = `${Math.min(100, (watt / maxWatt()) * 100)}%`
 
   const leak = standbyWatt(model)

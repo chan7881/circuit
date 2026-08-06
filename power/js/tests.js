@@ -4,7 +4,6 @@ import {
   APPLIANCES,
   BULBS,
   WON_PER_KWH,
-  GRAM_CO2_PER_KWH,
   createModel,
   getAppliance,
   isOn,
@@ -14,9 +13,9 @@ import {
   applianceWatt,
   totalWatt,
   standbyWatt,
-  kwhPerHour,
-  wonPerHour,
-  gramCo2PerHour,
+  HOURS_PER_MONTH,
+  kwhPerMonth,
+  wonPerMonth,
   maxWatt,
   lightShare,
   heatShare,
@@ -38,8 +37,7 @@ function close(actual, expected, label, tol = 1e-9) {
   const m = createModel()
   allOff(m)
   eq(totalWatt(m), 0, '모두 끄면 쓰는 전력이 0')
-  eq(wonPerHour(m), 0, '요금도 0')
-  eq(gramCo2PerHour(m), 0, '이산화 탄소도 0')
+  eq(wonPerMonth(m), 0, '요금도 0')
 })()
 
 // 2) 켠 기구의 소비 전력이 그대로 합계에 더해진다
@@ -88,14 +86,21 @@ function close(actual, expected, label, tol = 1e-9) {
   assert(standbyWatt(m) === APPLIANCES.reduce((s, a) => s + (a.id === 'tv' ? 0 : a.standby), 0), '켠 기구는 대기 전력 합계에서 빠진다')
 })()
 
-// 6) 전력량·요금·이산화 탄소가 소비 전력에 비례한다
+// 6) 전력량·요금이 소비 전력에 비례한다
 ;(function derivedValues() {
   const m = createModel()
   allOff(m)
   toggle(m, 'iron') // 1200 W
-  close(kwhPerHour(m), 1.2, '1200 W를 1시간 쓰면 1.2 kWh')
-  eq(wonPerHour(m), Math.round(1.2 * WON_PER_KWH), '요금은 전력량에 비례한다')
-  eq(gramCo2PerHour(m), Math.round(1.2 * GRAM_CO2_PER_KWH), '이산화 탄소도 전력량에 비례한다')
+  const kwh = (1200 * HOURS_PER_MONTH) / 1000
+  close(kwhPerMonth(m), kwh, `1200 W를 한 달(${HOURS_PER_MONTH}시간) 내내 쓰면 ${kwh} kWh`)
+  eq(wonPerMonth(m), Math.round(kwh * WON_PER_KWH), '요금은 전력량에 비례한다')
+
+  // 누진제를 반영하지 않는다 = kWh당 단가가 늘 일정하다.
+  // 그래서 소비 전력이 1.5배가 되면 요금도 정확히 1.5배여야 한다(실제 요금이라면 더 뛴다).
+  const ironWon = wonPerMonth(m)
+  allOff(m)
+  toggle(m, 'aircon') // 1800 W = 1200 W의 1.5배
+  close(wonPerMonth(m) / ironWon, 1800 / 1200, '소비 전력이 1.5배면 요금도 딱 1.5배(누진제 미반영)', 1e-6)
 })()
 
 // 7) **이 시뮬레이터의 관찰 거리** — 열을 내는 기구가 유난히 크다.
