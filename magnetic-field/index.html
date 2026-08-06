@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>코일 주위의 자기장</title>
+<meta name="description" content="중학생용 시뮬레이터 — 전류가 흐르는 코일·도선 주위에 놓인 나침반 8개의 반응을 관찰한다" />
+<link rel="stylesheet" href="../friction/styles.css" />
+</head>
+<body>
+<div id="app">
+
+  <header id="topbar">
+    <div class="seg" role="tablist" aria-label="모드 선택">
+      <button id="tab-coil" class="seg-btn selected tap-target" role="tab" aria-selected="true">1. 코일</button>
+      <button id="tab-wire" class="seg-btn tap-target" role="tab" aria-selected="false">2. 직선 도선</button>
+    </div>
+    <div class="spacer"></div>
+    <button id="btn-expand" class="tap-target icon-btn primary" aria-label="크게 보기">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
+      <span class="btn-text">크게 보기</span>
+    </button>
+  </header>
+
+  <main id="board-wrap">
+    <canvas id="board" aria-label="코일 또는 도선 주위 나침반 8개의 반응을 보여주는 화면"></canvas>
+    <p id="hint-bar" role="status"></p>
+  </main>
+
+  <nav class="controls" aria-label="조작">
+    <div class="ctrl-group">
+      <button id="btn-switch" class="chip tap-target selected">스위치 켜짐</button>
+    </div>
+    <div class="ctrl-group">
+      <span class="ctrl-label">전류 방향</span>
+      <div class="btn-row" id="direction-buttons">
+        <button class="chip tap-target selected" data-dir="1">방향 A</button>
+        <button class="chip tap-target" data-dir="-1">방향 B</button>
+      </div>
+    </div>
+    <div class="ctrl-group">
+      <span class="ctrl-label">전류 세기</span>
+      <div class="btn-row" id="current-buttons"></div>
+    </div>
+    <div class="ctrl-group">
+      <button id="btn-fieldlines" class="chip tap-target">자기력선 보기</button>
+    </div>
+  </nav>
+
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
