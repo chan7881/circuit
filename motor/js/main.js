@@ -52,6 +52,7 @@ function setModeUI(mode) {
   document.getElementById('tab-swing').setAttribute('aria-selected', String(mode === 'swing'))
   document.getElementById('tab-motor').setAttribute('aria-selected', String(mode === 'motor'))
   hintBar.textContent = HINTS[mode]
+  scene.focusMode(mode)
 }
 document.getElementById('tab-swing').addEventListener('click', () => setModeUI('swing'))
 document.getElementById('tab-motor').addEventListener('click', () => setModeUI('motor'))

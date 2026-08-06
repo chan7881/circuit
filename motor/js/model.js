@@ -88,7 +88,10 @@ export function forceMagnitude(model) {
 
 // ── 모드 A: 전기 그네(진자) ──────────────────────────────────────────
 
-const SWING_FORCE_K = 26
+// 전류가 최대일 때 자리잡는 각도가 FORCE_K/RESTORE_K = 약 0.55 rad(≈32°)가 되도록 잡았다.
+// 한계각(SWING_MAX_ANGLE)에 닿지 않아야 전류 세기 단계별 차이가 각도로 그대로 보이고,
+// 이 정도 각도라야 코일의 아래 도선이 말굽자석의 극 사이를 벗어나지 않는다(그림상 자연스럽다).
+const SWING_FORCE_K = 10
 const SWING_RESTORE_K = 18
 const SWING_DAMPING = 2.2
 export const SWING_MAX_ANGLE = 1.15
@@ -117,20 +120,41 @@ export function resetSwing(model) {
 // ── 모드 B: 전동기(연속 회전) ────────────────────────────────────────
 //
 // 정류자가 매 반 바퀴(π 라디안)마다 코일에 흐르는 전류의 방향을 바꿔주기 때문에, 회전을
-// 만드는 힘의 방향(=회전 방향)은 한 바퀴 내내 한쪽으로 유지된다. 그래서 목표 각속도는
-// forceSign 하나로만 정해지고, 회전각과 무관하다 — 정류자가 하는 일이 바로 그것이다.
+// 만드는 돌림힘(토크)의 방향은 한 바퀴 내내 한쪽으로 유지된다 — 정류자가 하는 일이 바로
+// 그것이다. 그래서 회전각은 **반 바퀴 주기**로 같은 상태가 반복된다.
+//
+// 돌림힘의 크기는 코일 면이 자기장과 나란할 때 가장 크고, 수직일 때 0이 된다(τ ∝ cos θ) —
+// 자바실험실 직류 전동기 시뮬레이션과 같은 규칙이다. τ가 0이 되는 순간(죽은점)에도 이미
+// 돌고 있던 관성 때문에 그냥 지나쳐 계속 돈다.
 
-const MOTOR_SPEED_K = 14 // 전류 최대일 때 목표 각속도(rad/s)
-const MOTOR_RESPONSIVENESS = 2.4 // 목표 각속도로 다가가는 빠르기(관성·마찰을 뭉뚱그린 값)
+const MOTOR_TORQUE_K = 30 // 돌림힘 → 각가속도 환산(회전 관성을 뭉뚱그린 값)
+const MOTOR_FRICTION = 1.6 // 마찰(각속도에 비례)
+export const MOTOR_MAX_SPEED = 16
 
 function normalizeAngle2Pi(a) {
   const twoPi = Math.PI * 2
   return ((a % twoPi) + twoPi) % twoPi
 }
 
+/**
+ * 정류자 덕분에 반 바퀴(π)마다 같은 상태가 반복되므로, 그 한 주기 안의 각도(−π/2 ~ π/2)로
+ * 줄여서 본다. 이 각도가 0이면 코일 면이 자기장과 나란해 돌림힘이 가장 크고, ±π/2이면
+ * 코일 면이 자기장과 수직이라 돌림힘이 0이다(죽은점).
+ */
+export function reducedMotorAngle(model) {
+  let a = model.motorAngle % Math.PI
+  if (a > Math.PI / 2) a -= Math.PI
+  return a
+}
+
+/** 지금 회전각에서 코일이 받는 돌림힘(−1 ~ 1). 부호가 회전 방향을 정한다. */
+export function motorTorque(model) {
+  return forceSign(model) * forceMagnitude(model) * Math.cos(reducedMotorAngle(model))
+}
+
 export function stepMotor(model, dt) {
-  const target = forceSign(model) * forceMagnitude(model) * MOTOR_SPEED_K
-  model.motorSpeed += (target - model.motorSpeed) * Math.min(1, MOTOR_RESPONSIVENESS * dt)
+  const accel = motorTorque(model) * MOTOR_TORQUE_K - MOTOR_FRICTION * model.motorSpeed
+  model.motorSpeed = Math.max(-MOTOR_MAX_SPEED, Math.min(MOTOR_MAX_SPEED, model.motorSpeed + accel * dt))
   model.motorAngle = normalizeAngle2Pi(model.motorAngle + model.motorSpeed * dt)
   return model
 }

@@ -17,6 +17,9 @@ import {
   stepMotor,
   resetMotor,
   commutatorPhase,
+  reducedMotorAngle,
+  motorTorque,
+  MOTOR_MAX_SPEED,
   step,
 } from './model.js'
 
@@ -122,20 +125,62 @@ function runFor(model, seconds, dt, stepFn) {
   assert(Math.abs(m.swingAngle) <= SWING_MAX_ANGLE + 1e-9, `그네 각도가 한계(${SWING_MAX_ANGLE})를 넘지 않는다 (실제=${m.swingAngle.toFixed(3)})`)
 })()
 
-// 8) 전동기 — 힘을 받으면 그 방향으로 계속 회전 속도가 붙는다(정류자 덕분에 방향이 유지됨)
+// 8) 전동기 — 힘을 받으면 그 방향으로 회전 속도가 붙고, 여러 바퀴를 돌아도 방향이 유지된다
 ;(function motorSpinsUpInForceDirection() {
   const m = createModel()
   setMode(m, 'motor')
   setDirection(m, 1)
   setMagnetPolarity(m, 1)
   setCurrent(m, MAX_CURRENT)
-  runFor(m, 3, 1 / 60, stepMotor)
+
+  // 죽은점(돌림힘 0)을 여러 번 지나는 동안 한 번도 역회전하지 않아야 한다 — 정류자가
+  // 반 바퀴마다 결선을 뒤집어 주기 때문에 돌림힘 부호가 계속 같은 쪽으로 유지된다.
+  let minSpeed = Infinity
+  let turns = 0
+  let prevAngle = m.motorAngle
+  for (let t = 0; t < 8; t += 1 / 60) {
+    stepMotor(m, 1 / 60)
+    if (t > 1) minSpeed = Math.min(minSpeed, m.motorSpeed)
+    if (m.motorAngle < prevAngle) turns++ // 0을 지나 한 바퀴 돌 때마다
+    prevAngle = m.motorAngle
+  }
   assert(m.motorSpeed > 1, `전동기가 힘 방향으로 회전 속도가 붙는다 (각속도=${m.motorSpeed.toFixed(2)})`)
-  // 여러 바퀴를 돌아도(=여러 정류자 전환을 거쳐도) 속도 부호가 바뀌지 않는다
-  const speedAfterFirstRun = m.motorSpeed
-  runFor(m, 3, 1 / 60, stepMotor)
-  assert(m.motorSpeed > 0, `정류자가 전환된 뒤에도 회전 방향이 유지된다 (각속도=${m.motorSpeed.toFixed(2)})`)
-  assert(m.motorSpeed >= speedAfterFirstRun - 1e-6, '시간이 더 지나면 목표 속도에 더 가까워진다')
+  assert(minSpeed > 0, `죽은점을 지나는 동안에도 역회전하지 않는다 (최저 각속도=${minSpeed.toFixed(2)})`)
+  assert(turns >= 3, `여러 바퀴를 실제로 돈다 (바퀴 수=${turns})`)
+})()
+
+// 8-1) 전동기 — 돌림힘은 코일 면이 자기장과 나란할 때 최대, 수직일 때 0이다
+;(function torqueVariesWithAngle() {
+  const m = createModel()
+  setMode(m, 'motor')
+  setCurrent(m, MAX_CURRENT)
+
+  m.motorAngle = 0
+  const atZero = Math.abs(motorTorque(m))
+  m.motorAngle = Math.PI / 2
+  const atQuarter = Math.abs(motorTorque(m))
+  m.motorAngle = Math.PI
+  const atHalf = Math.abs(motorTorque(m))
+
+  assert(Math.abs(atZero - 1) < 1e-9, `코일 면이 나란할 때 돌림힘이 최대 (실제=${atZero.toFixed(4)})`)
+  assert(atQuarter < 1e-9, `코일 면이 수직일 때(죽은점) 돌림힘이 0 (실제=${atQuarter.toFixed(4)})`)
+  assert(Math.abs(atHalf - 1) < 1e-9, `반 바퀴 뒤에는 다시 최대 — 정류자 덕분에 주기가 π다 (실제=${atHalf.toFixed(4)})`)
+
+  // 돌림힘 부호는 한 바퀴 내내 같은 쪽이어야 한다(정류자가 하는 일)
+  for (let i = 0; i < 40; i++) {
+    m.motorAngle = (i / 40) * Math.PI * 2
+    assert(motorTorque(m) >= -1e-9, `회전각 ${(m.motorAngle).toFixed(2)}에서 돌림힘 부호가 뒤집히지 않는다`)
+  }
+})()
+
+// 8-2) reducedMotorAngle은 항상 −π/2 ~ π/2 범위다
+;(function reducedAngleRange() {
+  const m = createModel()
+  for (let i = 0; i < 60; i++) {
+    m.motorAngle = (i / 60) * Math.PI * 2
+    const a = reducedMotorAngle(m)
+    assert(a > -Math.PI / 2 - 1e-9 && a <= Math.PI / 2 + 1e-9, `줄인 회전각이 범위 안이다(실제=${a.toFixed(3)})`)
+  }
 })()
 
 // 9) 전동기 — 방향을 반대로 하면 반대로 돈다
@@ -174,8 +219,21 @@ function runFor(model, seconds, dt, stepFn) {
   runFor(m, 3, 1 / 60, stepMotor)
   assert(Math.abs(m.motorSpeed) > 1, '회전 중이다')
   setOn(m, false)
-  runFor(m, 3, 1 / 60, stepMotor)
+  runFor(m, 6, 1 / 60, stepMotor)
   assert(Math.abs(m.motorSpeed) < 0.1, `스위치를 끄면 전동기가 멈춘다 (각속도=${m.motorSpeed.toFixed(3)})`)
+})()
+
+// 11-1) 전동기 — 각속도가 상한을 넘지 않는다
+;(function motorSpeedCapped() {
+  const m = createModel()
+  setMode(m, 'motor')
+  setCurrent(m, MAX_CURRENT)
+  let peak = 0
+  for (let t = 0; t < 20; t += 1 / 60) {
+    stepMotor(m, 1 / 60)
+    peak = Math.max(peak, Math.abs(m.motorSpeed))
+  }
+  assert(peak <= MOTOR_MAX_SPEED + 1e-9, `각속도가 상한(${MOTOR_MAX_SPEED})을 넘지 않는다 (최대=${peak.toFixed(2)})`)
 })()
 
 // 12) 전동기 — 회전각은 항상 0~2π 범위로 정규화된다
