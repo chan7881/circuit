@@ -10,6 +10,7 @@ import {
   setPreCharge,
   setMode,
   stepCan,
+  stepScope,
   resetCan,
   ROD_W,
   ATTRACT,
@@ -31,7 +32,7 @@ const prechargeGroup = document.getElementById('precharge-group')
 // 것이 없어진다(2026-08-06 사용자 피드백으로 결과 설명을 전부 걷어냈다).
 const HINTS = {
   can: '대전체를 끌어서 물체에 가까이 가져가 보세요. 닿게 하면 어떻게 될까요?',
-  scope: '대전체를 끌어서 검전기 금속판에 가까이 가져가 보세요.',
+  scope: '대전체를 끌어서 검전기 금속판에 가까이 가져가 보세요. 금속판에 닿게 한 뒤 다시 치워 보면?',
 }
 
 // --- 모드 전환 ---
@@ -155,8 +156,9 @@ function frame(ts) {
   lastTs = ts
   state.time += dt
 
-  // 캔은 실제로 굴러다닌다. 검전기는 고정된 장치라 움직이지 않는다.
+  // 캔은 실제로 굴러다닌다. 검전기는 고정된 장치라 움직이지 않지만, 막대가 닿았는지는 봐야 한다.
   if (model.mode === 'can') stepCan(model, dt)
+  else if (stepScope(model)) syncChips() // 접촉으로 대전됐으면 '검전기 상태' 칩도 맞춰준다
 
   const rect = canvas.getBoundingClientRect()
   if (model.mode === 'can') drawCanMode(ctx, rect.width, rect.height, model, state)

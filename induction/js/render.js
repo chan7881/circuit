@@ -120,9 +120,11 @@ function drawTable(ctx) {
 /**
  * 대전체 막대. tipX가 물체를 향한(오른쪽) 끝이다.
  *
- * `orientation`이 'horizontal'이면 책상에 눕혀 놓은 막대를 위에서 본 모습(캔 모드),
- * 'vertical'이면 손에 세워 든 막대를 옆에서 본 모습(검전기 모드)이다.
- * 시점이 다른 두 화면에 같은 그림을 쓰면 어느 쪽이 위인지 헷갈린다.
+ * 두 화면은 시점이 달라서 막대가 놓이는 방향도 다르다(2026-08-06 사용자 지시).
+ *  - 캔 모드(위에서 본 시점): 막대를 책상에 **캔과 나란히** 눕혀 두고 옆으로 밀어 다가간다
+ *    → 화면에서 **세로**. 실제 실험에서도 막대를 캔의 축과 나란히 대고 굴린다.
+ *  - 검전기 모드(옆에서 본 시점): 막대를 손에 **가로로** 들고 금속판 높이로 가져간다
+ *    → 화면에서 **가로**, 세로 위치는 금속판 한가운데.
  */
 function drawRod(ctx, tipX, centerY, charge, orientation) {
   const color = charge > 0 ? PLUS_COLOR : MINUS_COLOR
@@ -309,7 +311,7 @@ export function drawCanMode(ctx, cssWidth, cssHeight, model, state) {
   ctx.restore()
 
   drawCanCharges(ctx, box, model, state.showCharges)
-  drawRod(ctx, model.rodTipX, CAN_TOP + CAN_H / 2, model.rodCharge, 'horizontal')
+  drawRod(ctx, model.rodTipX, CAN_TOP + CAN_H / 2, model.rodCharge, 'vertical')
 
   ctx.restore()
 }
@@ -329,8 +331,6 @@ const SCOPE_STEM_TOP = SCOPE_PLATE_Y + SCOPE_PLATE_H
 const SCOPE_STEM_LEN = 96
 const SCOPE_FOIL_TOP = SCOPE_STEM_TOP + SCOPE_STEM_LEN
 const SCOPE_FOIL_LEN = 92
-/** 세워 든 막대의 세로 중심 — 손잡이까지 화면 안에 들어오도록 잡은 값이다 */
-const SCOPE_ROD_CENTER_Y = 150
 
 /** 전하를 놓을 세 구역. index 0이 대전체와 가장 가까운 쪽(금속판)이다. */
 function scopeZones(spread) {
@@ -473,7 +473,7 @@ export function drawScopeMode(ctx, cssWidth, cssHeight, model, state) {
   ctx.restore()
 
   drawScopeCharges(ctx, model, state.showCharges, spread)
-  drawRod(ctx, model.rodTipX, SCOPE_ROD_CENTER_Y, model.rodCharge, 'vertical')
+  drawRod(ctx, model.rodTipX, SCOPE_PLATE_Y + SCOPE_PLATE_H / 2, model.rodCharge, 'horizontal')
 
   ctx.restore()
 }

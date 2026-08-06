@@ -40,7 +40,7 @@ export const PAIRS = [
     id: 'straw',
     label: '빨대 + 털가죽',
     a: { name: '빨대', color: '#dc6803', shape: 'straw' },
-    b: { name: '털가죽', color: '#8b5cf6', shape: 'fur' },
+    b: { name: '털가죽', color: '#8a5a2b', shape: 'fur' },
     donor: 'b', // 털가죽이 전자를 잃는다 → 털가죽 (+), 빨대 (−)
   },
   {

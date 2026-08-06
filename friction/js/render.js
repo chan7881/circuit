@@ -93,35 +93,61 @@ function roundedRect(ctx, x, y, w, h, r) {
 // 각 물체를 알아볼 수 있게 그린다(2026-08-06 피드백). 실물 사진을 쓰지 않고 도형으로만
 // 그리는 이유는 교과서 사진의 저작권 문제를 피하면서도 무엇인지 알아볼 수 있게 하기 위해서다.
 
-/** 빨대 — 가로로 누운 얇은 원기둥. 나선 줄무늬로 '빨대'라는 걸 알아보게 한다. */
+/**
+ * 빨대 — 실물 사진을 보고 다시 그렸다(2026-08-06).
+ *
+ * 처음엔 사탕지팡이처럼 **비스듬한 나선 줄무늬**를 넣었는데, 실제 빨대에 그런 무늬는 없다.
+ * 사진에서 빨대를 빨대로 알아보게 하는 것은 세 가지였다:
+ *   ① 아주 가느다란 관(길이에 비해 지름이 훨씬 작다)
+ *   ② 한 가지 색의 매끈한 플라스틱 + 길이 방향으로 길게 흐르는 흰 반사광
+ *   ③ 구부러지는 **주름 마디** — 축에 **수직인** 촘촘한 링. 이게 가장 결정적인 특징이다.
+ */
 function drawStraw(ctx, box) {
   const { x, y, w, h } = box
+  const r = h / 2
   ctx.save()
-  ctx.fillStyle = '#fdba74'
-  roundedRect(ctx, x, y, w, h, h / 2)
-  ctx.fill()
-  ctx.strokeStyle = '#c2410c'
-  ctx.lineWidth = 2.5
-  ctx.stroke()
 
-  // 나선 줄무늬
+  ctx.fillStyle = '#f97316'
+  roundedRect(ctx, x, y, w, h, r)
+  ctx.fill()
+
   ctx.save()
-  roundedRect(ctx, x, y, w, h, h / 2)
+  roundedRect(ctx, x, y, w, h, r)
   ctx.clip()
-  ctx.strokeStyle = '#fb923c'
-  ctx.lineWidth = 5
-  for (let sx = x - h; sx < x + w + h; sx += 22) {
+
+  // ③ 주름 마디 — 오른쪽 1/3 지점에 축과 수직인 링을 촘촘히
+  const pleatStart = x + w * 0.58
+  const pleatEnd = x + w * 0.84
+  ctx.fillStyle = '#ea580c'
+  ctx.fillRect(pleatStart, y, pleatEnd - pleatStart, h)
+  ctx.strokeStyle = 'rgba(124,45,18,0.55)'
+  ctx.lineWidth = 1.6
+  for (let sx = pleatStart + 2; sx < pleatEnd; sx += 4.5) {
     ctx.beginPath()
-    ctx.moveTo(sx, y + h)
-    ctx.lineTo(sx + h, y)
+    ctx.moveTo(sx, y + 1)
+    ctx.lineTo(sx, y + h - 1)
     ctx.stroke()
   }
+
+  // ② 길이 방향 반사광 — 매끈한 플라스틱 관으로 보이게 하는 핵심
+  ctx.strokeStyle = 'rgba(255,255,255,0.75)'
+  ctx.lineWidth = h * 0.2
+  ctx.lineCap = 'round'
+  ctx.beginPath()
+  ctx.moveTo(x + r, y + h * 0.3)
+  ctx.lineTo(x + w - r, y + h * 0.3)
+  ctx.stroke()
   ctx.restore()
 
-  // 끝의 구멍(타원)으로 속이 빈 관이라는 걸 표시
+  ctx.strokeStyle = '#c2410c'
+  ctx.lineWidth = 2
+  roundedRect(ctx, x, y, w, h, r)
+  ctx.stroke()
+
+  // 잘린 끝의 구멍 — 속이 빈 관이라는 표시
   ctx.fillStyle = '#7c2d12'
   ctx.beginPath()
-  ctx.ellipse(x + w - 3, y + h / 2, 3.5, h / 2 - 3, 0, 0, Math.PI * 2)
+  ctx.ellipse(x + w - 2.5, y + h / 2, 2.5, r - 2, 0, 0, Math.PI * 2)
   ctx.fill()
   ctx.restore()
 }
@@ -151,31 +177,66 @@ function drawGlassRod(ctx, box) {
   ctx.restore()
 }
 
-/** 털가죽 — 위쪽 가장자리를 뾰족뾰족한 털로 그린다 */
+/**
+ * 털가죽 — 실물 사진을 보고 다시 그렸다(2026-08-06).
+ *
+ * 처음엔 보라색 바탕에 큼직한 **삼각형 톱니**를 얹었는데, 사진 속 모피와 전혀 달랐다.
+ * 실제 털가죽은 ① 갈색·베이지 계열이고 ② 가장자리가 톱니가 아니라 **가늘고 길이가 제각각인
+ * 털 가닥**으로 부스스하며 ③ 안쪽에도 결을 따라 털 무늬가 보인다.
+ * 그래서 톱니를 버리고 가는 선(털 가닥) 여러 개로 그린다.
+ */
 function drawFur(ctx, box) {
   const { x, y, w, h } = box
+  const bodyTop = y + 16
   ctx.save()
-  const bodyTop = y + 14
-  ctx.fillStyle = '#a78bfa'
-  roundedRect(ctx, x, bodyTop, w, h - 14, 12)
-  ctx.fill()
-  ctx.strokeStyle = '#6d28d9'
-  ctx.lineWidth = 2.5
-  ctx.stroke()
 
-  // 삐죽삐죽한 털
-  ctx.fillStyle = '#c4b5fd'
-  ctx.beginPath()
-  ctx.moveTo(x + 6, bodyTop + 4)
-  for (let i = 0; i * 16 < w - 12; i++) {
-    const bx = x + 6 + i * 16
-    ctx.lineTo(bx + 8, bodyTop - 13 - (i % 2) * 5)
-    ctx.lineTo(bx + 16, bodyTop + 4)
-  }
-  ctx.closePath()
+  // 가죽 바닥 — 갈색 계열의 결이 있는 면
+  const grad = ctx.createLinearGradient(0, bodyTop, 0, y + h)
+  grad.addColorStop(0, '#a8763f')
+  grad.addColorStop(0.5, '#8a5a2b')
+  grad.addColorStop(1, '#6b4423')
+  ctx.fillStyle = grad
+  roundedRect(ctx, x, bodyTop, w, h - 16, 10)
   ctx.fill()
-  ctx.strokeStyle = '#8b5cf6'
-  ctx.lineWidth = 1.6
+
+  // 털 가닥 — 길이·각도가 제각각이어야 '부스스한 털'로 읽힌다.
+  // 난수를 쓰면 프레임마다 털이 흔들리므로, 인덱스로 만든 고정된 유사난수를 쓴다.
+  const wobble = (i, k) => ((Math.sin(i * 12.9898 + k * 78.233) * 43758.5453) % 1 + 1) % 1
+
+  ctx.save()
+  ctx.lineCap = 'round'
+  // ① 윗면 바깥으로 삐져나온 털
+  for (let i = 0; i * 3.2 < w; i++) {
+    const hx = x + i * 3.2
+    const len = 9 + wobble(i, 1) * 11
+    const lean = (wobble(i, 2) - 0.5) * 7
+    ctx.strokeStyle = `rgba(${205 + wobble(i, 3) * 40 | 0}, ${175 + wobble(i, 4) * 40 | 0}, 130, 0.9)`
+    ctx.lineWidth = 1.3
+    ctx.beginPath()
+    ctx.moveTo(hx, bodyTop + 5)
+    ctx.quadraticCurveTo(hx + lean * 0.5, bodyTop - len * 0.5, hx + lean, bodyTop - len)
+    ctx.stroke()
+  }
+  // ② 가죽 안쪽의 털 결
+  ctx.save()
+  roundedRect(ctx, x, bodyTop, w, h - 16, 10)
+  ctx.clip()
+  for (let i = 0; i * 5 < w; i++) {
+    const hx = x + i * 5 + wobble(i, 5) * 4
+    const top = bodyTop + wobble(i, 6) * 14
+    ctx.strokeStyle = `rgba(${225 + wobble(i, 7) * 25 | 0}, 205, 165, ${0.25 + wobble(i, 8) * 0.35})`
+    ctx.lineWidth = 1.6
+    ctx.beginPath()
+    ctx.moveTo(hx, top)
+    ctx.quadraticCurveTo(hx + 3, top + (h - 16) * 0.5, hx - 2, y + h - 4)
+    ctx.stroke()
+  }
+  ctx.restore()
+  ctx.restore()
+
+  ctx.strokeStyle = '#5b3a1e'
+  ctx.lineWidth = 2
+  roundedRect(ctx, x, bodyTop, w, h - 16, 10)
   ctx.stroke()
   ctx.restore()
 }
@@ -249,19 +310,22 @@ function drawCharges(ctx, box, protons, electrons, chargeMode) {
   }
   if (symbols.length === 0) return
 
-  const cols = Math.ceil(symbols.length / 2)
-  const rows = symbols.length > cols ? 2 : 1
-  const padX = 16
+  // 납작한 물체(가느다란 빨대·유리막대)에 두 줄로 그리면 기호가 물체 밖으로 삐져나온다.
+  // 높이를 보고 줄 수를 정하고, 기호 크기도 칸에 맞춰 줄여 어떤 모양에서도 안 겹치게 한다.
+  const rows = box.h < 70 ? 1 : 2
+  const cols = Math.ceil(symbols.length / rows)
+  const padX = 14
   const cellW = (box.w - padX * 2) / Math.max(1, cols)
   const cellH = box.h / (rows + 1)
+  const radius = Math.max(4, Math.min(CHARGE_R, cellW * 0.44, cellH * 0.44))
 
   symbols.forEach((s, i) => {
     const c = i % cols
     const r = Math.floor(i / cols)
     const x = box.x + padX + cellW * (c + 0.5)
     const y = box.y + cellH * (r + 1)
-    if (s === '+') drawPlus(ctx, x, y)
-    else drawMinus(ctx, x, y)
+    if (s === '+') drawPlus(ctx, x, y, radius)
+    else drawMinus(ctx, x, y, radius)
   })
 }
 
@@ -280,8 +344,8 @@ function drawName(ctx, box, name, color) {
 // 아래쪽 물체(b)는 바닥에 놓여 있고, 위쪽 물체(a)를 학생이 끌고 다닌다. 두 물체가 겹친 채로
 // 움직인 거리만 '문지른 거리'로 쌓인다 — 떨어뜨린 채 휘저으면 아무 일도 일어나지 않는다.
 
-export const HAND_W = 210
-export const HAND_H = 46
+export const HAND_W = 300
+export const HAND_H = 28
 export const BASE_W = 300
 export const BASE_H = 92
 const BASE_Y = 210

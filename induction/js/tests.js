@@ -25,6 +25,7 @@ import {
   totalCharge,
   forceOnObject,
   stepCan,
+  stepScope,
   resetCan,
   foilSpread,
   foilTrend,
@@ -204,9 +205,31 @@ function run(m, seconds) {
   setMode(m, 'scope')
   setRodTipX(m, SCOPE_PLATE_LEFT - 100)
   eq(gap(m), 100, '검전기 모드의 틈은 금속판 기준이다')
-  // 금속판을 뚫고 들어갈 수는 없다
+  // 금속판에 **닿게는** 할 수 있어야 한다(접촉 대전을 보여줘야 하므로). 다만 뚫고 들어가진 않는다.
   setRodTipX(m, SCOPE_PLATE_LEFT + 50)
-  assert(gap(m) > 0, '막대가 금속판 안으로 들어가지 않는다')
+  eq(gap(m), 0, '막대를 금속판에 닿는 데까지 가져갈 수 있다(더 밀어도 판을 뚫진 않는다)')
+})()
+
+// 14-2) 금속판에 닿으면 검전기가 접촉으로 대전되고, 막대를 치워도 벌어진 채 남는다
+//       — 유도(치우면 닫힘)와 접촉 대전(치워도 벌어짐)을 가르는 결정적 장면이다
+;(function scopeContactCharging() {
+  const m = createModel()
+  setMode(m, 'scope')
+  setRodCharge(m, -1)
+
+  setRodTipX(m, SCOPE_PLATE_LEFT - 100)
+  eq(stepScope(m), false, '떨어져 있으면 접촉이 일어나지 않는다')
+  eq(m.preCharge, 0, '아직 중성')
+
+  setRodTipX(m, SCOPE_PLATE_LEFT)
+  eq(stepScope(m), true, '닿는 순간 접촉 대전이 일어난다')
+  eq(Math.sign(m.preCharge), -1, '(−)막대에 닿으면 검전기도 (−)로 대전된다(같은 전기)')
+  eq(stepScope(m), false, '이미 대전된 뒤에는 다시 일어나지 않는다')
+
+  // 막대를 멀리 치워도 금속박은 벌어진 채로 남는다
+  setRodTipX(m, 44)
+  eq(shiftedElectrons(m), 0, '막대를 치우면 유도는 사라진다')
+  assert(foilSpread(m) > 0, `그래도 금속박은 벌어진 채 남는다 (벌어짐=${foilSpread(m).toFixed(2)})`)
 })()
 
 // 15) 중성 검전기 — 가까이 하면 금속박이 벌어진다

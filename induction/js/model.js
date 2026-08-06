@@ -75,13 +75,11 @@ export function setPreCharge(model, charge) {
 }
 
 /**
- * 막대를 끌어다 놓는다.
- * 캔 모드에서는 캔을 밀고 들어갈 수 있다(닿는 순간 접촉 대전으로 처리된다).
- * 검전기 모드에서는 금속판 바로 앞에서 멈춘다 — 검전기에 직접 닿게 하는 건 이번 소단원의
- * 주제(유도)가 아니라, 학생이 실수로 닿게 해서 결과가 달라지는 일을 애초에 막는다.
+ * 막대를 끌어다 놓는다. 두 모드 모두 물체에 **닿게 할 수 있다** — 닿는 순간 접촉 대전이
+ * 일어나고, 그때부터 결과가 달라지는 것이 이 시뮬레이터에서 가장 중요한 장면이다.
  */
 export function setRodTipX(model, x) {
-  const max = model.mode === 'scope' ? SCOPE_PLATE_LEFT - 6 : TRACK.right
+  const max = model.mode === 'scope' ? SCOPE_PLATE_LEFT : TRACK.right
   model.rodTipX = Math.max(ROD_W + 4, Math.min(max, x))
   return model
 }
@@ -238,6 +236,22 @@ export function resetCan(model) {
 }
 
 // ── 검전기 ────────────────────────────────────────────────────────────
+
+/**
+ * 검전기도 막대가 금속판에 **닿으면** 전하가 옮겨와 그대로 대전된다.
+ * 캔과 달리 검전기는 움직이지 않으므로 결과가 금속박에 남는다 — 막대를 치워도 금속박이
+ * 벌어진 채로 있는 것이 접촉 대전의 증거다(유도만 걸렸을 때는 치우면 닫힌다).
+ * 옮겨온 전하는 preCharge에 넣는다 — '미리 대전된 검전기'와 물리적으로 같은 상태다.
+ *
+ * 접촉이 방금 일어났으면 true를 돌려준다(호출부가 조작 칩을 맞춰 그릴 수 있게).
+ */
+export function stepScope(model) {
+  if (model.mode !== 'scope') return false
+  if (gap(model) > 0) return false
+  if (model.preCharge !== 0) return false
+  model.preCharge = Math.sign(model.rodCharge) * CONTACT_AMOUNT
+  return true
+}
 
 /**
  * 검전기 금속박이 벌어진 정도(0~1).
