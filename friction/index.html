@@ -13,7 +13,7 @@
   <header id="topbar">
     <div class="seg" role="tablist" aria-label="모드 선택">
       <button id="tab-rub" class="seg-btn selected tap-target" role="tab" aria-selected="true">1. 문지르기</button>
-      <button id="tab-force" class="seg-btn tap-target" role="tab" aria-selected="false">2. 힘 관찰</button>
+      <button id="tab-force" class="seg-btn tap-target" role="tab" aria-selected="false">2. 전기력 하키</button>
     </div>
     <div class="spacer"></div>
     <button id="btn-reset" class="tap-target icon-btn" aria-label="처음으로 되돌리기">
@@ -45,23 +45,20 @@
         <button class="chip tap-target" data-charge-mode="none">안 보기</button>
       </div>
     </div>
-    <div class="ctrl-group grow">
-      <button id="btn-rub" class="primary-btn tap-target">문지르기</button>
-    </div>
   </nav>
 
   <!-- 모드 2 컨트롤 -->
-  <nav id="controls-force" class="controls" aria-label="힘 관찰 조작" hidden>
+  <nav id="controls-force" class="controls" aria-label="전기력 하키 조작" hidden>
     <div class="ctrl-group">
-      <span class="ctrl-label">물체 A</span>
-      <div class="btn-row" data-side="left">
+      <span class="ctrl-label">채</span>
+      <div class="btn-row" data-side="paddle">
         <button class="chip tap-target" data-charge="1">(+)전기</button>
         <button class="chip tap-target selected" data-charge="-1">(−)전기</button>
       </div>
     </div>
     <div class="ctrl-group">
-      <span class="ctrl-label">물체 B</span>
-      <div class="btn-row" data-side="right">
+      <span class="ctrl-label">퍽</span>
+      <div class="btn-row" data-side="puck">
         <button class="chip tap-target" data-charge="1">(+)전기</button>
         <button class="chip tap-target selected" data-charge="-1">(−)전기</button>
       </div>

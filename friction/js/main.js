@@ -3,33 +3,42 @@
 
 import {
   PAIRS,
-  MAX_TRANSFER,
   getPair,
   createModel,
-  rub,
+  rubByDistance,
   reset,
   setPair,
-  netCharge,
-  totalElectrons,
-  createForceModel,
-  setForceCharge,
-  forceKind,
-  forceLabel,
-  euroParticle,
+  createHockeyModel,
+  resetHockey,
+  setHockeyCharge,
+  movePaddle,
+  releasePaddle,
+  stepHockey,
   ATTRACT,
   REPEL,
   NONE,
 } from './model.js'
-import { computeLayout, screenToLogical, rubZone, drawRubMode, drawForceMode } from './render.js'
+import {
+  computeLayout,
+  screenToLogical,
+  drawRubMode,
+  drawHockeyMode,
+  defaultHandPos,
+  clampHandPos,
+  handBox,
+  isTouching,
+  toFieldCoords,
+} from './render.js'
 
 const model = createModel()
-const forceModel = createForceModel()
+const hockey = createHockeyModel()
 
 const state = {
-  mode: 'rub', // 'rub' | 'force'
+  mode: 'rub', // 'rub' | 'hockey'
   chargeMode: 'all',
   rubbing: false,
   time: 0,
+  handPos: defaultHandPos(),
   movingElectrons: [], // { t } — 0→1로 진행하는 애니메이션
 }
 
@@ -41,8 +50,14 @@ const tabForce = document.getElementById('tab-force')
 const controlsRub = document.getElementById('controls-rub')
 const controlsForce = document.getElementById('controls-force')
 const pairButtons = document.getElementById('pair-buttons')
-const btnRub = document.getElementById('btn-rub')
 const btnReset = document.getElementById('btn-reset')
+
+// 안내 문구는 "무엇을 해 보라"까지만 말한다. 관찰 결과를 대신 말해주면 학생이 스스로 알아낼
+// 것이 없어진다(2026-08-06 사용자 피드백으로 결과 설명을 전부 걷어냈다).
+const HINTS = {
+  rub: '물체를 끌어다 서로 맞대고 문질러 보세요.',
+  hockey: '채를 끌고 다니며 퍽을 움직여 보세요. 전기의 종류를 바꿔가며 해 보세요.',
+}
 
 // --- 물체 쌍 버튼 ---
 for (const pair of PAIRS) {
@@ -54,8 +69,8 @@ for (const pair of PAIRS) {
   btn.addEventListener('click', () => {
     setPair(model, pair.id)
     state.movingElectrons.length = 0
+    state.handPos = defaultHandPos()
     for (const b of pairButtons.querySelectorAll('.chip')) b.classList.toggle('selected', b.dataset.pairId === pair.id)
-    updateHint()
   })
   pairButtons.appendChild(btn)
 }
@@ -65,7 +80,6 @@ for (const btn of document.querySelectorAll('[data-charge-mode]')) {
   btn.addEventListener('click', () => {
     state.chargeMode = btn.dataset.chargeMode
     for (const b of document.querySelectorAll('[data-charge-mode]')) b.classList.toggle('selected', b === btn)
-    updateHint()
   })
 }
 
@@ -73,24 +87,24 @@ for (const btn of document.querySelectorAll('[data-charge-mode]')) {
 function setMode(mode) {
   state.mode = mode
   tabRub.classList.toggle('selected', mode === 'rub')
-  tabForce.classList.toggle('selected', mode === 'force')
+  tabForce.classList.toggle('selected', mode === 'hockey')
   tabRub.setAttribute('aria-selected', String(mode === 'rub'))
-  tabForce.setAttribute('aria-selected', String(mode === 'force'))
+  tabForce.setAttribute('aria-selected', String(mode === 'hockey'))
   controlsRub.hidden = mode !== 'rub'
-  controlsForce.hidden = mode !== 'force'
-  updateHint()
+  controlsForce.hidden = mode !== 'hockey'
+  hintBar.textContent = HINTS[mode]
+  dragging = null
 }
 tabRub.addEventListener('click', () => setMode('rub'))
-tabForce.addEventListener('click', () => setMode('force'))
+tabForce.addEventListener('click', () => setMode('hockey'))
 
-// --- 힘 관찰 모드의 전하 선택 ---
+// --- 에어하키 전하 선택 ---
 for (const row of document.querySelectorAll('[data-side]')) {
-  const side = row.dataset.side
+  const which = row.dataset.side // 'paddle' | 'puck'
   for (const btn of row.querySelectorAll('.chip')) {
     btn.addEventListener('click', () => {
-      setForceCharge(forceModel, side, Number(btn.dataset.charge))
+      setHockeyCharge(hockey, which, Number(btn.dataset.charge))
       for (const b of row.querySelectorAll('.chip')) b.classList.toggle('selected', b === btn)
-      updateHint()
     })
   }
 }
@@ -113,30 +127,21 @@ document.getElementById('btn-expand').addEventListener('click', async () => {
 
 // --- 되돌리기 ---
 btnReset.addEventListener('click', () => {
-  reset(model)
-  state.movingElectrons.length = 0
-  updateHint()
+  if (state.mode === 'rub') {
+    reset(model)
+    state.movingElectrons.length = 0
+    state.handPos = defaultHandPos()
+  } else {
+    resetHockey(hockey)
+  }
 })
 
-// --- 문지르기 ---
-function doRub() {
-  if (model.transferred >= MAX_TRANSFER) {
-    updateHint()
-    return
-  }
-  rub(model, 1)
-  state.movingElectrons.push({ t: 0 })
-  updateHint()
-}
+// --- 드래그 조작 ---
+// 문지르기: 위쪽 물체를 직접 끌고 다닌다. 두 물체가 맞닿은 채로 움직인 거리만 쌓인다.
+// 에어하키: 채를 끌고 다닌다.
 
-btnRub.addEventListener('click', doRub)
-
-// 캔버스 위를 좌우로 드래그해도 문질러진다 — 실제로 '문지르는' 손동작에 가깝다.
-// 일정 거리(RUB_DISTANCE)를 움직일 때마다 전자 하나가 옮겨간다.
-const RUB_DISTANCE = 60
-let dragging = false
-let lastX = 0
-let accumulated = 0
+let dragging = null // null | 'hand' | 'paddle'
+let lastPointer = null
 
 function pointerLogical(e) {
   const rect = canvas.getBoundingClientRect()
@@ -144,68 +149,58 @@ function pointerLogical(e) {
   return screenToLogical(layout, e.clientX - rect.left, e.clientY - rect.top)
 }
 
+function insideBox(p, box, pad = 10) {
+  return p.x >= box.x - pad && p.x <= box.x + box.w + pad && p.y >= box.y - pad && p.y <= box.y + box.h + pad
+}
+
 canvas.addEventListener('pointerdown', (e) => {
-  if (state.mode !== 'rub') return
   const p = pointerLogical(e)
-  const zone = rubZone()
-  if (p.x < zone.x || p.x > zone.x + zone.w || p.y < zone.y || p.y > zone.y + zone.h) return
-  dragging = true
-  state.rubbing = true
-  lastX = p.x
-  accumulated = 0
+  if (state.mode === 'rub') {
+    // 물체를 정확히 집지 않아도 잡히게 여유를 둔다 — 손가락으로는 정밀하게 누르기 어렵다
+    if (!insideBox(p, handBox(state.handPos), 22)) return
+    dragging = 'hand'
+    state.rubbing = true
+  } else {
+    dragging = 'paddle'
+    const f = toFieldCoords(p)
+    movePaddle(hockey, f.x, f.y, 0)
+  }
+  lastPointer = p
   canvas.setPointerCapture?.(e.pointerId)
 })
 
 canvas.addEventListener('pointermove', (e) => {
   if (!dragging) return
   const p = pointerLogical(e)
-  accumulated += Math.abs(p.x - lastX)
-  lastX = p.x
-  while (accumulated >= RUB_DISTANCE) {
-    accumulated -= RUB_DISTANCE
-    doRub()
+
+  if (dragging === 'hand') {
+    const next = clampHandPos({ x: p.x, y: p.y })
+    // 맞닿아 있을 때만 문지른 거리로 친다 — 허공에서 휘저으면 아무 일도 일어나지 않는다.
+    // (그래야 "문질러야 대전된다"는 조건 자체가 관찰 대상이 된다)
+    if (isTouching(next) && lastPointer) {
+      const distance = Math.hypot(next.x - state.handPos.x, next.y - state.handPos.y)
+      const moved = rubByDistance(model, distance)
+      for (let i = 0; i < moved; i++) state.movingElectrons.push({ t: 0 })
+    }
+    state.handPos = next
+  } else {
+    const f = toFieldCoords(p)
+    // dt는 렌더 루프가 아니라 포인터 이벤트 간격으로 잡아야 채의 속도가 실제 손놀림을 따라간다
+    movePaddle(hockey, f.x, f.y, Math.max(0.008, (e.timeStamp - (lastPointer?.ts ?? e.timeStamp)) / 1000))
   }
+  p.ts = e.timeStamp
+  lastPointer = p
 })
 
 function endDrag() {
-  dragging = false
+  if (dragging === 'paddle') releasePaddle(hockey)
+  dragging = null
   state.rubbing = false
+  lastPointer = null
 }
 canvas.addEventListener('pointerup', endDrag)
 canvas.addEventListener('pointercancel', endDrag)
 canvas.addEventListener('pointerleave', endDrag)
-
-// --- 안내 문구 ---
-function updateHint() {
-  if (state.mode === 'force') {
-    const kind = forceKind(forceModel)
-    hintBar.textContent = forceLabel(kind)
-    hintBar.dataset.tone = kind === NONE ? 'info' : 'result'
-    return
-  }
-
-  const pair = getPair(model.pairId)
-  if (model.transferred === 0) {
-    hintBar.textContent = '아직 문지르지 않았어요. 두 물체 모두 중성입니다.'
-    hintBar.dataset.tone = 'info'
-    return
-  }
-  const donorName = pair[pair.donor].name
-  const acceptor = pair.donor === 'a' ? 'b' : 'a'
-  const acceptorName = pair[acceptor].name
-  const full = model.transferred >= MAX_TRANSFER ? ' (더 문지를 수 없어요)' : ''
-  hintBar.textContent =
-    `전자 ${model.transferred}개가 ${donorName} → ${acceptorName}${euroParticle(acceptorName)} 옮겨갔어요. ` +
-    `${donorName} ${signText(netCharge(model, pair.donor))}, ${acceptorName} ${signText(netCharge(model, acceptor))} · ` +
-    `전자 총합 ${totalElectrons(model)}개(변하지 않음)${full}`
-  hintBar.dataset.tone = 'result'
-}
-
-function signText(net) {
-  if (net > 0) return '(+)전기'
-  if (net < 0) return '(−)전기'
-  return '중성'
-}
 
 // --- 캔버스 크기 대응 ---
 function resizeCanvas() {
@@ -230,8 +225,12 @@ function frame(ts) {
   state.movingElectrons = state.movingElectrons.filter((e) => e.t < 1)
 
   const rect = canvas.getBoundingClientRect()
-  if (state.mode === 'rub') drawRubMode(ctx, rect.width, rect.height, model, state)
-  else drawForceMode(ctx, rect.width, rect.height, forceModel, forceKind(forceModel), state)
+  if (state.mode === 'rub') {
+    drawRubMode(ctx, rect.width, rect.height, model, state)
+  } else {
+    stepHockey(hockey, dt)
+    drawHockeyMode(ctx, rect.width, rect.height, hockey)
+  }
 
   requestAnimationFrame(frame)
 }
@@ -241,4 +240,4 @@ setMode('rub')
 requestAnimationFrame(frame)
 
 // 브라우저 자동화·수동 점검에서 상태를 들여다볼 수 있게 열어둔다(기능에는 영향 없음).
-window.__sim = { model, forceModel, state, ATTRACT, REPEL, NONE }
+window.__sim = { model, hockey, state, getPair, ATTRACT, REPEL, NONE }
