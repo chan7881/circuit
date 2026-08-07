@@ -105,6 +105,54 @@ function vecClose(a, b, label, tol = 1e-6) {
   close(dot, 0, '자기장은 도선에서 뻗어나가는 방향과 수직이다(접선 방향)', 1e-6)
 })()
 
+// 5-1) **직선 도선의 회전 방향이 오른손 법칙과 맞는가** (손잡이 검증)
+//
+// 예전 검증은 "자기장이 반지름 방향과 수직인가"까지만 봤다. 수직이기만 하면 시계 방향이든
+// 반시계 방향이든 통과해 버려서, 나침반이 실제와 180° 반대를 가리키는 걸 놓쳤다.
+// 여기서는 방향까지 못 박는다: B ∝ Î × r̂.
+//
+// 화면에서 direction=+1이면 전류는 위(장면 +y)로 흐르게 그려지고, 모델 좌표 {x,y}는 장면의
+// {x,z}에 대응한다. 따라서 Î=(0,1,0), r̂=(p.x,0,p.y)/|p| 로 두고 외적을 구하면
+//   Î × r̂ = (p.y, 0, −p.x)/|p|  →  모델 좌표에서 (p.y, −p.x)/|p|
+;(function wireFieldFollowsRightHandRule() {
+  const m = createModel()
+  setMode(m, 'wire')
+  setCurrent(m, MAX_CURRENT)
+
+  for (const dir of [1, -1]) {
+    setDirection(m, dir)
+    for (const p of WIRE_COMPASS_POSITIONS) {
+      const len = Math.hypot(p.x, p.y)
+      // 전류 방향이 반대면 자기장도 반대로 돈다
+      const ex = (dir * p.y) / len
+      const ey = (dir * -p.x) / len
+      const f = wireFieldAt(m, p)
+      const flen = Math.hypot(f.x, f.y)
+      const dot = (f.x / flen) * ex + (f.y / flen) * ey
+      close(dot, 1, `전류방향 ${dir}, 위치 (${p.x.toFixed(0)},${p.y.toFixed(0)}): 자기장이 오른손 법칙 방향과 일치`, 1e-9)
+    }
+  }
+})()
+
+// 5-2) 코일도 같은 검증 — 그려진 전류 순환과 자기장 방향이 오른손 법칙으로 맞아야 한다.
+//
+// render.js는 direction=+1일 때 고리 앞쪽 위(45°)에서 전류가 (0,−1,+1) 방향으로 흐르도록
+// 그린다. 그 순환(+y에서 +z 쪽으로 도는 것)의 자기 모멘트는 오른손 법칙으로 +x이므로,
+// 코일 속과 축 위에서 자기장도 +x를 향해야 한다.
+;(function coilFieldFollowsRightHandRule() {
+  const m = createModel()
+  setMode(m, 'coil')
+  setCurrent(m, MAX_CURRENT)
+
+  setDirection(m, 1)
+  assert(coilFieldAt(m, { x: 0, y: 0 }).x > 0, '전류방향 +1: 코일 속 자기장이 +x(자기 모멘트 쪽)를 향한다')
+  assert(coilFieldAt(m, { x: 150, y: 0 }).x > 0, '전류방향 +1: 코일 축 바깥에서도 +x를 향한다')
+
+  setDirection(m, -1)
+  assert(coilFieldAt(m, { x: 0, y: 0 }).x < 0, '전류방향 −1: 코일 속 자기장이 반대(−x)를 향한다')
+  assert(coilFieldAt(m, { x: 150, y: 0 }).x < 0, '전류방향 −1: 코일 축 바깥에서도 −x를 향한다')
+})()
+
 // 6) **이 시뮬레이터의 핵심** — 나침반은 지구 자기장과 코일(도선) 자기장의 합을 가리킨다.
 ;(function needleIsVectorSum() {
   const m = createModel()

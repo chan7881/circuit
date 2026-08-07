@@ -133,8 +133,17 @@ export function coilFieldAt(model, p) {
 
 // ── 직선 도선 모델 ────────────────────────────────────────────────────
 //
-// 도선이 화면과 수직으로(종이를 뚫고) 지나간다고 본다 — 왼손·오른손 법칙 실험에서 흔히
-// 쓰는 배치다. 자기장은 도선을 중심으로 동심원을 그리며, 세기는 거리에 반비례한다.
+// 도선이 실험대를 수직으로 뚫고 지나간다. 자기장은 도선을 중심으로 동심원을 그리며,
+// 세기는 거리에 반비례한다.
+//
+// **회전 방향은 오른손 법칙(B ∝ Î × r̂)으로 정해진다.** 화면에서 direction=+1이면 전류가
+// 위(장면 +y)로 흐르도록 그리고, 모델 좌표 {x, y}는 장면의 {x, z}에 대응한다. 그러면
+//   Î × r̂ = (0,1,0) × (rx, 0, rz) = (rz, 0, −rx)
+// 이므로 모델 좌표에서 접선은 (p.y, −p.x) 방향이다.
+//
+// ⚠️ 예전에는 이 부호가 반대(−p.y, p.x)여서 나침반이 실제와 **정확히 180° 반대**를 가리켰다.
+//    "접선 방향"만 맞으면 된다고 보고 회전 방향(손잡이)을 확인하지 않아 놓친 것이다.
+//    아래 tests.js에 오른손 법칙 검증을 넣어 다시는 뒤집히지 않게 했다(2026-08-07 사용자 지적).
 
 const WIRE_FIELD_SCALE = 900
 
@@ -145,8 +154,8 @@ export function wireFieldAt(model, p) {
   const dist = Math.max(MIN_DIST * 0.6, Math.hypot(p.x, p.y))
   const rx = p.x / dist
   const ry = p.y / dist
-  // 반지름 방향을 90도 돌리면 접선 방향이 나온다. 전류 방향이 부호를 뒤집는다(회전 방향 반전).
-  const tangent = { x: -ry, y: rx }
+  // 반지름 방향을 90도 돌리면 접선 방향이 나온다(오른손 법칙에 맞는 쪽으로).
+  const tangent = { x: ry, y: -rx }
   const magnitude = (model.direction * level * WIRE_FIELD_SCALE) / dist
   return { x: tangent.x * magnitude, y: tangent.y * magnitude }
 }
