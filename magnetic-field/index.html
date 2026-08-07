@@ -15,8 +15,8 @@
 
   <header id="topbar">
     <div class="seg" role="tablist" aria-label="모드 선택">
-      <button id="tab-coil" class="seg-btn selected tap-target" role="tab" aria-selected="true">1. 코일</button>
-      <button id="tab-wire" class="seg-btn tap-target" role="tab" aria-selected="false">2. 직선 도선</button>
+      <button id="tab-wire" class="seg-btn selected tap-target" role="tab" aria-selected="true">1. 직선 도선</button>
+      <button id="tab-coil" class="seg-btn tap-target" role="tab" aria-selected="false">2. 코일</button>
     </div>
     <div class="spacer"></div>
     <button id="btn-expand" class="tap-target icon-btn primary" aria-label="크게 보기">
@@ -40,12 +40,6 @@
         <button class="chip tap-target selected" data-dir="1">방향 A</button>
         <button class="chip tap-target" data-dir="-1">방향 B</button>
       </div>
-    </div>
-    <div class="ctrl-group slider-group">
-      <span class="ctrl-label">전류 세기</span>
-      <input id="current-slider" class="slider" type="range" min="0" max="4" step="0.05" value="2"
-             aria-label="전류 세기" />
-      <span id="current-value" class="slider-value" role="status">50%</span>
     </div>
     <div class="ctrl-group">
       <button id="btn-fieldlines" class="chip tap-target">자기력선 보기</button>

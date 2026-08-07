@@ -30,7 +30,12 @@ const COIL_HALF_LEN = 62 / MODEL_SCALE
 const COIL_RADIUS = 26 / MODEL_SCALE
 const COIL_LOOPS = 5
 const COMPASS_RADIUS = 17 / MODEL_SCALE
-const WIRE_HALF_LEN = 1.3
+const COIL_TUBE_R = 0.028
+const WIRE_R = 0.045
+// 이론에서 다루는 "직선 도선의 자기장"은 **무한히 긴** 도선을 상정한다. 실제로 무한을
+// 그릴 수는 없지만, 도선이 화면 위아래를 뚫고 나가도록 충분히 길게 그리면 끝이 보이지
+// 않아 무한히 이어지는 것처럼 읽힌다(2026-08-07 사용자 피드백).
+const WIRE_HALF_LEN = 7
 
 export function createScene(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true })
@@ -67,6 +72,28 @@ export function createScene(canvas) {
   grid.position.y = 0.001
   scene.add(grid)
 
+  // ── 전류 방향 화살표 만들기 ──
+  //
+  // three.js 기본 ArrowHelper는 몸통을 **선(Line)** 으로 그려서 1픽셀 굵기라 잘 안 보인다.
+  // 원기둥(몸통)+원뿔(머리)로 직접 만들어 굵기를 정한다. 도선과 **같은 축에** 놓이는
+  // 화살표는 도선보다 굵어야 도선 속에 파묻히지 않는다(2026-08-07 사용자 피드백).
+  function makeArrowMesh(shaftR, length, color) {
+    const mat = new THREE.MeshStandardMaterial({ color })
+    const headLen = Math.min(shaftR * 4.5, length * 0.45)
+    const shaftLen = length - headLen
+    const g = new THREE.Group()
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(shaftR, shaftR, shaftLen, 14), mat)
+    shaft.position.y = shaftLen / 2
+    const head = new THREE.Mesh(new THREE.ConeGeometry(shaftR * 2.1, headLen, 16), mat)
+    head.position.y = shaftLen + headLen / 2
+    g.add(shaft, head)
+    // 화살표 한가운데가 원점에 오도록 내려 둔다 — 놓을 자리를 잡기 쉬워진다.
+    const inner = new THREE.Group()
+    inner.add(g)
+    g.position.y = -length / 2
+    return inner
+  }
+
   // ── 코일 ──
   const coilGroup = new THREE.Group()
   const core = new THREE.Mesh(
@@ -77,19 +104,24 @@ export function createScene(canvas) {
   coilGroup.add(core)
 
   const loopMat = new THREE.MeshStandardMaterial({ color: '#92400e' })
-  const arrowMat = new THREE.MeshStandardMaterial({ color: CURRENT_COLOR })
   const coilArrows = []
   const loopGap = (COIL_HALF_LEN * 2) / (COIL_LOOPS - 1)
   for (let i = 0; i < COIL_LOOPS; i++) {
     const lx = -COIL_HALF_LEN + loopGap * i
-    const torus = new THREE.Mesh(new THREE.TorusGeometry(COIL_RADIUS, 0.028, 10, 40), loopMat)
+    const torus = new THREE.Mesh(new THREE.TorusGeometry(COIL_RADIUS, COIL_TUBE_R, 10, 40), loopMat)
     torus.rotation.y = Math.PI / 2 // 토러스의 구멍 방향(기본 Z축)을 코일 축(X축)으로 돌린다
     torus.position.x = lx
     coilGroup.add(torus)
 
     // 전류 방향 화살표 — 학생이 정한 조건을 그대로 보여줄 뿐, 결과를 알려주는 게 아니다.
-    const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.16, 10), arrowMat)
-    arrow.position.set(lx, COIL_RADIUS + 0.03, 0)
+    //
+    // 고리의 **앞쪽 위(45°)** 에 놓는다. 이 자리를 고른 이유가 둘 있다:
+    //  · 꼭대기는 전류가 앞뒤(±z) 방향이라 정면에서 보면 점처럼 찌그러진다.
+    //  · 정면 한가운데(y=0)는 코일이 실험대 높이에 걸쳐 있어 화살표 절반이 상판에 묻힌다.
+    // 45° 자리는 상판 위로 완전히 올라와 있고, 전류 방향도 비스듬해서 어느 시점에서도
+    // 눌리지 않는다(2026-08-07 사용자 피드백). 고리 도선보다 굵어야 파묻히지 않는다.
+    const arrow = makeArrowMesh(COIL_TUBE_R * 1.5, 0.34, CURRENT_COLOR)
+    arrow.position.set(lx, COIL_RADIUS * Math.SQRT1_2, COIL_RADIUS * Math.SQRT1_2)
     coilArrows.push(arrow)
     coilGroup.add(arrow)
   }
@@ -98,14 +130,16 @@ export function createScene(canvas) {
   // ── 직선 도선 ──
   const wireGroup = new THREE.Group()
   const wire = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.045, 0.045, WIRE_HALF_LEN * 2, 20),
+    new THREE.CylinderGeometry(WIRE_R, WIRE_R, WIRE_HALF_LEN * 2, 20),
     new THREE.MeshStandardMaterial({ color: '#e2e8f0' }),
   )
   wireGroup.add(wire)
-  const wireArrowMat = new THREE.MeshStandardMaterial({ color: CURRENT_COLOR })
   const wireArrows = []
-  for (const y of [-0.6, 0, 0.6]) {
-    const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.22, 12), wireArrowMat)
+  // 도선이 길어진 만큼 화살표도 여러 개를 늘어놓아, 어느 높이에서 봐도 전류 방향을 읽을 수
+  // 있게 한다. 도선과 같은 축이라 도선보다 굵게 만든다. 실험대 아래는 상판에 가려 보이지
+  // 않으므로 전부 상판 위쪽에 둔다.
+  for (const y of [0.15, 0.95, 1.75, 2.55]) {
+    const arrow = makeArrowMesh(WIRE_R * 1.5, 0.5, CURRENT_COLOR)
     arrow.position.y = y
     wireArrows.push(arrow)
     wireGroup.add(arrow)
@@ -201,7 +235,9 @@ export function createScene(canvas) {
     } else {
       // 도선을 감싸는 동심원을 도선을 따라 여러 높이에 쌓아, 진짜 3D 구조임을 보여준다.
       const radii = [40, 70, 100, 130, 160].map((r) => r / MODEL_SCALE)
-      const heights = [-0.9, -0.45, 0, 0.45, 0.9]
+      // 도선이 길어진 만큼 원도 위아래로 더 넓게 쌓아, 도선을 따라 어디서나 같은 모양의
+      // 자기장이 이어진다는 것(무한히 긴 도선의 성질)이 보이게 한다.
+      const heights = [-1.8, -0.9, 0, 0.9, 1.8]
       for (const y of heights) {
         for (const r of radii) {
           const points = []
@@ -224,10 +260,13 @@ export function createScene(canvas) {
     wireGroup.visible = model.mode === 'wire'
 
     const on = currentLevel(model) > 0
-    const coilArrowRotX = model.direction > 0 ? Math.PI / 2 : -Math.PI / 2
+    // 고리 앞쪽 위(45°)에서 전류가 흐르는 방향. direction이 +1일 때 자기 모멘트가 +x를
+    // 향하도록(오른손 법칙) 맞추면, 이 자리에서 전류는 **비스듬히 아래·앞쪽**으로 흐른다.
+    // (확인: 꼭대기(+y)에서 전류가 +z이면 r×v ∝ (0,R,0)×(0,0,1) = +x — 모델의 모멘트와 같다.)
+    const coilCurrentDir = new THREE.Vector3(0, -1, 1).normalize().multiplyScalar(model.direction)
     for (const arrow of coilArrows) {
       arrow.visible = on
-      arrow.rotation.x = coilArrowRotX
+      arrow.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), coilCurrentDir)
     }
     const wireArrowRotZ = model.direction > 0 ? 0 : Math.PI
     for (const arrow of wireArrows) {
