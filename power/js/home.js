@@ -1,100 +1,92 @@
 // 「우리 집」 화면의 캔버스 그리기 + 탭 판정.
 //
-// 예전에는 이 화면이 네모 카드 목록이었다. 기기 이름이 회색 글자로만 적혀 있어 잘 안 보였고,
-// 무엇보다 **"버튼을 누른다"가 집에서 전기를 쓴다는 것과 잘 이어지지 않았다**(2026-08-07
-// 사용자 피드백). 그래서 **조감도(위에서 비스듬히 내려다본 집)** 안에 기구를 놓고 직접
-// 누르게 했다. 정면에서 본 납작한 그림으로도 그려 봤지만, 방바닥이 안 보여서 "집"이라기보다
-// 칸이 나뉜 표처럼 보였다 — 참고 그림처럼 바닥이 보여야 방에 기구가 놓인 것으로 읽힌다.
+// 참고 그림(교과서 삽화)을 따라 **위에서 비스듬히 내려다본 단면 조감도**로 그린다.
+//   · 방 넷의 크기가 제각각인 **실제 평면도**
+//   · 방마다 가구가 놓이고 벽에 문·창문이 있다
+//   · 기구 이름·소비 전력은 **집 밖으로 뺀 말풍선**에 적고 지시선으로 잇는다
 //
-// **연결선**은 장식이 아니다 — 배전반에서 나온 전선이 방바닥을 따라 각 기구로 갈라져 들어가고,
-// 켜진 기구로 가는 선에서만 전기가 흐른다(움직이는 점). 선의 굵기는 그 기구가 쓰는 전력에
-// 따라 달라져서, 어떤 기구가 전기를 많이 먹는지가 **숫자를 읽기 전에 굵기로 먼저 보인다.**
+// **말풍선을 집 밖에 두는 것이 핵심 결정이다.** 이름표를 기구 바로 아래 붙이면 조감도에서는
+// 서로 포개진다(격자로 줄 세워 봤지만 그건 '집'이 아니라 표처럼 보였다). 말풍선을 좌우
+// 기둥에 **고정 칸으로 쌓으면 겹칠 수가 없고**, 지시선 덕분에 어느 기구인지도 분명하다 —
+// 참고 그림이 쓰는 방법 그대로다(2026-08-07 사용자 요청).
+//
+// **연결선(전선)** 은 장식이 아니다 — 배전반에서 나온 전선이 각 기구로 갈라져 들어가고,
+// 켜진 기구로 가는 선에서만 전기가 흐른다(움직이는 점). 굵기는 소비 전력에 따라 달라져서,
+// 어떤 기구가 전기를 많이 먹는지가 **숫자를 읽기 전에 굵기로 먼저 보인다.**
 //
 // ⚠️ 관찰 결과를 글자로 적지 않는다. "열을 내는 기구가 전기를 많이 쓴다"는 학생이 찾아낼
 //    결론이므로, 화면은 굵기·밝기 같은 **관찰 가능한 것**만 보여 준다.
 
 import { APPLIANCES, isOn, applianceWatt } from './model.js'
 
-// ── 조감도 투영 ───────────────────────────────────────────────────────
+// ── 집 평면도 ─────────────────────────────────────────────────────────
 //
-// 바닥 좌표 (u, v)를 화면 좌표로 옮긴다. u는 집의 가로, v는 안쪽으로 들어가는 깊이다.
-//   화면x = OX + (u − v) · kx      화면y = OY + (u + v) · ky
-//
-// ⚠️ 기구 자리를 바닥 좌표로 직접 잡으면 안 된다. 조감도에서는 (u+v)가 같은 두 점이 화면에서
-//    같은 높이에 겹쳐 버려서, 바닥에서 멀찍이 떨어뜨려도 이름표가 서로 포개진다(실제로 처음
-//    그렇게 짰다가 글자가 뭉갰다). 그래서 **화면에서의 칸(가로 d = u−v, 세로 s = u+v)을 먼저
-//    정하고** 거기서 u, v를 거꾸로 구한다 — 이름표 사이 간격이 화면에서 보장된다.
-//      u = (s + d) / 2,  v = (s − d) / 2
-//
-// 화면 모양에 따라 각도와 칸 배치를 달리한다: 넓은 화면은 4칸×2줄, 세로로 긴 폰은 2칸×4줄.
-// 조감도는 본래 가로로 퍼지는 그림이라, 세로 화면에 넓은 각도를 그대로 쓰면 배율이 떨어져
-// 이름 글자가 7px도 안 됐다.
-const FLOOR_U = 470
-const FLOOR_V = 470
-const WALL_H = 62
-/**
- * 바닥 네 귀퉁이를 잘라낸다.
- * 기구는 화면 격자에 맞춰 놓기 때문에 마름모꼴 바닥의 네 귀퉁이(맨 위·아래·좌·우)에는
- * 아무것도 놓이지 않아 휑하게 남는다. 그 부분을 잘라내면 기구가 놓인 만큼만 방이 된다.
- */
-// 바닥 좌표 (u,v)와 화면 칸 좌표 (d,s)는 서로 바꿔 쓸 수 있다: d = u−v, s = u+v.
-function ds(d, s) {
-  return { u: (s + d) / 2, v: (s - d) / 2 }
-}
+// 바닥 좌표 (u, v). u는 집의 가로, v는 안쪽으로 들어가는 깊이.
+const FLOOR_U = 420
+const FLOOR_V = 330
 
-// 전선은 **화면 칸 좌표로 깐다.** 바닥 좌표로 깔면(예: v를 고정) 조감도에서 대각선이 되어
-// 방을 가로질러 이름표 위를 지나간다(처음에 그렇게 짰다가 화면이 엉켰다).
-//   · s를 고정한 선 → 화면에서 **가로**
-//   · d를 고정한 선 → 화면에서 **세로**
-// 그래서 칸이 적은 쪽으로 간선을 깔고, 많은 쪽으로 갈라 준다.
-const WIDE = {
-  kx: 0.86, ky: 0.34,
-  cols: [-174, -58, 58, 174],
-  rows: [260, 672],
-  roomsAcross: 4, // 방 넷이 나란히 — 방마다 위·아래 두 자리에 기구가 하나씩
-  busAlong: 'row', // 두 줄 사이를 가로지르는 간선(가로) + 기구마다 세로로 갈라짐
-  busS: 466,
-  panelD: -232,
-  sMin: 150, sMax: 800, dMax: 280,
-  OX: 420, OY: 96, W: 840, H: 430,
-}
-const TALL = {
-  kx: 0.5, ky: 0.66,
-  cols: [-110, 110],
-  rows: [200, 397, 594, 791],
-  roomsAcross: 2, // 방 둘씩 두 줄 = 넷
-  busAlong: 'col', // 두 칸 사이를 지나는 간선(세로) + 기구마다 가로로 갈라짐
-  busD: 0,
-  panelS: 120,
-  sMin: 96, sMax: 880, dMax: 260,
-  OX: 250, OY: 96, W: 500, H: 720,
-}
-
-/**
- * 방 배치 — 실제 집처럼 그럴듯하게 묶는다. 방 하나에 기구 둘.
- * 순서가 곧 자리다: i번째 방 = (칸 i%roomsAcross, 줄 i/roomsAcross), 그 방의 두 기구가
- * 그 칸의 위·아래 자리에 들어간다.
- */
+/** 방 넷 — 일부러 크기를 다르게 잡았다(실제 집 평면도처럼). */
+// nameU·nameV는 방 이름을 적을 자리 — 가구나 기구에 가리지 않는 빈 구석으로 골랐다.
 const ROOMS = [
-  { name: '주방', ids: ['led', 'fridge'] },
-  { name: '거실', ids: ['tv', 'aircon'] },
-  { name: '안방', ids: ['charger', 'iron'] },
-  { name: '공부방', ids: ['incandescent', 'fan'] },
+  { id: 'bed', name: '안방', u0: 0, v0: 0, u1: 190, v1: 150, nameU: 30, nameV: 108 },
+  { id: 'study', name: '공부방', u0: 190, v0: 0, u1: 420, v1: 135, nameU: 300, nameV: 20 },
+  { id: 'living', name: '거실', u0: 190, v0: 135, u1: 420, v1: 330, nameU: 232, nameV: 175 },
+  { id: 'kitchen', name: '주방', u0: 0, v0: 150, u1: 190, v1: 330, nameU: 150, nameV: 175 },
 ]
 
-/** 기구 id → 화면 칸(칸 번호, 줄 번호) */
-function slotOf(g, id) {
-  for (const [r, room] of ROOMS.entries()) {
-    const k = room.ids.indexOf(id)
-    if (k < 0) continue
-    const rc = r % g.roomsAcross
-    const rr = Math.floor(r / g.roomsAcross)
-    return { col: rc, row: rr * 2 + k, room: r }
-  }
-  return { col: 0, row: 0, room: 0 }
+/** 기구가 놓인 자리와, 이름표를 어느 쪽 기둥에 붙일지. */
+const PLACES = {
+  charger: { u: 55, v: 42, side: 'left', slot: 0 },
+  iron: { u: 138, v: 108, side: 'left', slot: 1 },
+  fridge: { u: 52, v: 205, side: 'left', slot: 2 },
+  led: { u: 132, v: 288, side: 'left', slot: 3 },
+  incandescent: { u: 252, v: 40, side: 'right', slot: 0 },
+  fan: { u: 358, v: 95, side: 'right', slot: 1 },
+  aircon: { u: 372, v: 180, side: 'right', slot: 2 },
+  tv: { u: 250, v: 268, side: 'right', slot: 3 },
 }
 
-/** 가로가 세로의 1.35배보다 넓으면 넓은 각도(4칸×2줄), 아니면 세로로 세운 각도(2칸×4줄). */
+/** 배전반 — 모든 전선이 여기서 나간다. 왼쪽 이름표 기둥과 겹치지 않게 집 안쪽으로 들여 둔다. */
+const PANEL = { u: 62, v: 300 }
+
+/** 가구 — 집처럼 보이게 하는 최소한의 소품. 기구를 가리지 않는 자리에만 둔다. */
+const FURNITURE = [
+  { kind: 'bed', u: 130, v: 40, w: 96, d: 68 },
+  { kind: 'desk', u: 285, v: 92, w: 92, d: 34 },
+  { kind: 'sofa', u: 300, v: 300, w: 110, d: 40 },
+  { kind: 'counter', u: 40, v: 250, w: 44, d: 92 },
+]
+
+// 참고 그림의 따뜻한 색을 따른다 — 회색·파랑 도식보다 '집'으로 읽힌다.
+const FLOOR_FILL = '#fdf6ec'
+const FLOOR_EDGE = '#e8d9c5'
+const WALL_FACE = '#f0c8c0'
+const WALL_TOP = '#f8e0da'
+const WALL_LINE = '#d9a49a'
+const ROOM_LINE = '#e4cfc0'
+const WIRE_OFF = '#cfc4b6'
+const WIRE_ON = '#f59e0b'
+const TEXT = '#3f2f26'
+const SUBTEXT = '#7a6455'
+
+const WALL_H = 62
+const PARTITION_H = 26
+
+/**
+ * 화면 모양에 따라 두 가지 배치.
+ *  · 넓은 화면: 집을 가운데 두고 말풍선을 **좌우 기둥**에 4개씩 (참고 그림과 같은 모양)
+ *  · 세로 폰 : 집을 위에 두고 말풍선을 **아래 2열×4행**으로 (가로가 좁아 좌우로 못 편다)
+ * 어느 쪽이든 말풍선은 **미리 정해진 칸**에 들어가므로 서로 겹칠 수 없다.
+ */
+const WIDE = {
+  kx: 0.86, ky: 0.38, OX: 462, OY: 132, W: 1000, H: 440,
+  card: { w: 176, h: 62, gap: 12, leftX: 14, rightX: 810, topY: 74 },
+}
+const TALL = {
+  kx: 0.62, ky: 0.30, OX: 236, OY: 92, W: 500, H: 620,
+  card: { w: 224, h: 54, gap: 8, cols: [16, 260], topY: 348 },
+}
+
 export function pickGeom(cssWidth, cssHeight) {
   return cssWidth / Math.max(cssHeight, 1) >= 1.35 ? WIDE : TALL
 }
@@ -103,60 +95,52 @@ function project(g, u, v, lift = 0) {
   return { x: g.OX + (u - v) * g.kx, y: g.OY + (u + v) * g.ky - lift }
 }
 
-/** 갈래 전선이 이름표를 피해 옆으로 비켜 가는 정도(화면 칸 좌표). */
-const BRANCH_OFF = 62
-
-const WALL = '#cbd5e1'
-const WALL_TOP = '#e2e8f0'
-const FLOOR_FILL = '#f8fafc'
-const ROOM_LINE = '#dbe3ec'
-const WIRE_OFF = '#cbd5e1'
-const WIRE_ON = '#f59e0b'
-const TEXT = '#1e293b' // 진하게 — 예전 회색(#64748b)은 작은 글씨에서 잘 안 보였다
-const SUBTEXT = '#475569'
-
 export function computeLayout(cssWidth, cssHeight) {
   const g = pickGeom(cssWidth, cssHeight)
   const scale = Math.min(cssWidth / g.W, cssHeight / g.H)
-  return {
-    g,
-    scale,
-    offsetX: (cssWidth - g.W * scale) / 2,
-    offsetY: (cssHeight - g.H * scale) / 2,
-  }
+  return { g, scale, offsetX: (cssWidth - g.W * scale) / 2, offsetY: (cssHeight - g.H * scale) / 2 }
 }
 
 export function screenToLogical(layout, x, y) {
   return { x: (x - layout.offsetX) / layout.scale, y: (y - layout.offsetY) / layout.scale }
 }
 
-/** 기구가 화면 어디에 그려지는지 — 그리기와 탭 판정이 같은 값을 쓴다. */
-export function slots(g) {
-  return APPLIANCES.map((a) => {
-    const at = slotOf(g, a.id)
-    const d = g.cols[at.col]
-    const s = g.rows[at.row]
-    const f = ds(d, s)
-    const p = project(g, f.u, f.v)
-    return { id: a.id, u: f.u, v: f.v, d, s, x: p.x, y: p.y, depth: s, room: at.room }
-  })
+/** 이름표(말풍선)가 놓이는 네모. 칸이 정해져 있어 절대 겹치지 않는다. */
+export function cardRect(g, id) {
+  const p = PLACES[id]
+  const c = g.card
+  if (c.cols) {
+    const col = p.side === 'left' ? 0 : 1
+    return { x: c.cols[col], y: c.topY + p.slot * (c.h + c.gap), w: c.w, h: c.h }
+  }
+  return {
+    x: p.side === 'left' ? c.leftX : c.rightX,
+    y: c.topY + p.slot * (c.h + c.gap),
+    w: c.w,
+    h: c.h,
+  }
 }
 
-/** 배전반이 놓인 화면 칸 자리 — 간선이 시작하는 곳이다. */
-function panelDS(g) {
-  return g.busAlong === 'row'
-    ? { d: g.panelD, s: g.busS }
-    : { d: g.busD, s: g.panelS }
+/** 기구가 그려지는 자리(집 안)와 이름표 자리(집 밖)를 함께 돌려준다. */
+export function slots(g) {
+  return APPLIANCES.map((a) => {
+    const p = PLACES[a.id]
+    const at = project(g, p.u, p.v)
+    return { id: a.id, u: p.u, v: p.v, x: at.x, y: at.y, depth: p.u + p.v, card: cardRect(g, a.id) }
+  })
 }
 
 /**
  * 논리 좌표 위의 한 점이 어느 기구를 눌렀는지. 없으면 null.
- * 앞(아래)에 있는 기구가 위로 겹쳐 그려지므로, 판정도 앞에서부터 훑는다.
+ * **기구 그림과 이름표 둘 다** 누를 수 있게 한다 — 이름표가 크고 누르기 쉬워서 손가락으로는
+ * 그쪽이 더 편하다.
  */
 export function hitTest(p, g) {
   const list = slots(g).sort((a, b) => b.depth - a.depth)
   for (const s of list) {
-    if (Math.abs(p.x - s.x) <= 46 && p.y >= s.y - 54 && p.y <= s.y + 40) return s.id
+    const c = s.card
+    if (p.x >= c.x && p.x <= c.x + c.w && p.y >= c.y && p.y <= c.y + c.h) return s.id
+    if (Math.abs(p.x - s.x) <= 30 && p.y >= s.y - 46 && p.y <= s.y + 14) return s.id
   }
   return null
 }
@@ -168,6 +152,20 @@ function roundedRect(ctx, x, y, w, h, r) {
   ctx.arcTo(x + w, y + h, x, y + h, r)
   ctx.arcTo(x, y + h, x, y, r)
   ctx.arcTo(x, y, x + w, y, r)
+  ctx.closePath()
+}
+
+/** 바닥 좌표 위의 네모(방·가구)를 조감도 사각형으로 */
+function quad(ctx, g, u0, v0, u1, v1, lift = 0) {
+  const a = project(g, u0, v0, lift)
+  const b = project(g, u1, v0, lift)
+  const c = project(g, u1, v1, lift)
+  const d = project(g, u0, v1, lift)
+  ctx.beginPath()
+  ctx.moveTo(a.x, a.y)
+  ctx.lineTo(b.x, b.y)
+  ctx.lineTo(c.x, c.y)
+  ctx.lineTo(d.x, d.y)
   ctx.closePath()
 }
 
@@ -379,287 +377,237 @@ const ICONS = {
 }
 
 
-// ── 집(조감도) ────────────────────────────────────────────────────────
 
-/** 반평면 하나로 다각형을 자른다(f(p) ≥ 0 인 쪽만 남긴다). */
-function clipHalfPlane(poly, f) {
-  const out = []
-  for (let i = 0; i < poly.length; i++) {
-    const cur = poly[i]
-    const prev = poly[(i + poly.length - 1) % poly.length]
-    const fc = f(cur)
-    const fp = f(prev)
-    if (fp >= 0 !== fc >= 0) {
-      const t = fp / (fp - fc)
-      out.push({ u: prev.u + (cur.u - prev.u) * t, v: prev.v + (cur.v - prev.v) * t })
-    }
-    if (fc >= 0) out.push(cur)
-  }
-  return out
-}
+// ── 가구 ──────────────────────────────────────────────────────────────
 
-/** 귀퉁이를 잘라낸 바닥 다각형(바닥 좌표). */
-function floorPolygon(g) {
-  let poly = [
-    { u: 0, v: 0 },
-    { u: FLOOR_U, v: 0 },
-    { u: FLOOR_U, v: FLOOR_V },
-    { u: 0, v: FLOOR_V },
-  ]
-  for (const f of [
-    (p) => p.u + p.v - g.sMin,
-    (p) => g.sMax - (p.u + p.v),
-    (p) => g.dMax - (p.u - p.v),
-    (p) => p.u - p.v + g.dMax,
+function drawFurniture(ctx, g, f) {
+  const h = f.kind === 'counter' ? 16 : f.kind === 'bed' ? 12 : 14
+  const u0 = f.u - f.w / 2
+  const u1 = f.u + f.w / 2
+  const v0 = f.v - f.d / 2
+  const v1 = f.v + f.d / 2
+  const body = { bed: '#cfe3f5', desk: '#e7d3b8', sofa: '#cfd9e8', counter: '#e3ddd2' }[f.kind]
+  const side = { bed: '#a9c6df', desk: '#c9b190', sofa: '#adbacd', counter: '#c6bfb1' }[f.kind]
+
+  // 앞·옆면(두께)
+  ctx.fillStyle = side
+  const a = project(g, u0, v1)
+  const b = project(g, u1, v1)
+  const c = project(g, u1, v0)
+  for (const [p, q] of [
+    [a, b],
+    [b, c],
   ]) {
-    poly = clipHalfPlane(poly, f)
+    ctx.beginPath()
+    ctx.moveTo(p.x, p.y)
+    ctx.lineTo(q.x, q.y)
+    ctx.lineTo(q.x, q.y - h)
+    ctx.lineTo(p.x, p.y - h)
+    ctx.closePath()
+    ctx.fill()
   }
-  return poly
+  // 윗면
+  ctx.fillStyle = body
+  quad(ctx, g, u0, v0, u1, v1, h)
+  ctx.fill()
+  ctx.strokeStyle = side
+  ctx.lineWidth = 1.5
+  ctx.stroke()
+
+  if (f.kind === 'bed') {
+    ctx.fillStyle = '#ffffff' // 베개 — 침대로 보이게
+    quad(ctx, g, u0 + 8, v0 + 6, u0 + 34, v1 - 6, h + 1)
+    ctx.fill()
+  }
 }
 
-/** 바닥 안에서 u−v = d 인 선분의 양 끝점 — 방을 가르는 칸막이 자리다. */
-function dividerEnds(g, d) {
-  const s0 = Math.max(g.sMin, Math.abs(d))
-  const s1 = Math.min(g.sMax, FLOOR_U + FLOOR_V - Math.abs(d))
-  return [
-    { u: (s0 + d) / 2, v: (s0 - d) / 2 },
-    { u: (s1 + d) / 2, v: (s1 - d) / 2 },
-  ]
-}
+// ── 집 ────────────────────────────────────────────────────────────────
 
-/**
- * 바닥면과 방 칸막이.
- * 칸막이는 **화면에서 기구 칸을 가르는 자리**(d의 중간값)에 긋는다 — 그래야 방 하나에 기구가
- * 고르게 들어간 것으로 보인다. 바닥 좌표에서 반듯하게 반으로 가르면 화면에서는 기구들이
- * 한쪽 방에만 몰려 보인다.
- */
 function drawFloor(ctx, g) {
-  const c = floorPolygon(g).map((p) => project(g, p.u, p.v))
   ctx.save()
-  ctx.fillStyle = FLOOR_FILL
-  ctx.strokeStyle = WALL
+  // 방마다 바닥을 칠한다 — 크기가 제각각인 것이 그대로 보인다
+  for (const r of ROOMS) {
+    ctx.fillStyle = FLOOR_FILL
+    quad(ctx, g, r.u0, r.v0, r.u1, r.v1)
+    ctx.fill()
+    ctx.strokeStyle = ROOM_LINE
+    ctx.lineWidth = 1.5
+    ctx.stroke()
+  }
+  ctx.strokeStyle = FLOOR_EDGE
   ctx.lineWidth = 3
+  quad(ctx, g, 0, 0, FLOOR_U, FLOOR_V)
+  ctx.stroke()
+  ctx.restore()
+}
+
+/** 벽 한 장(바닥 위의 선분에서 위로 세운다). 문·창문 구멍을 낼 수 있다. */
+function drawWall(ctx, g, u0, v0, u1, v1, height, opening) {
+  const a = project(g, u0, v0)
+  const b = project(g, u1, v1)
+  ctx.fillStyle = WALL_FACE
+  ctx.strokeStyle = WALL_LINE
+  ctx.lineWidth = 1.5
   ctx.beginPath()
-  ctx.moveTo(c[0].x, c[0].y)
-  for (const p of c.slice(1)) ctx.lineTo(p.x, p.y)
+  ctx.moveTo(a.x, a.y)
+  ctx.lineTo(b.x, b.y)
+  ctx.lineTo(b.x, b.y - height)
+  ctx.lineTo(a.x, a.y - height)
   ctx.closePath()
   ctx.fill()
   ctx.stroke()
+  // 윗면(잘라낸 단면)
+  ctx.fillStyle = WALL_TOP
+  ctx.beginPath()
+  ctx.moveTo(a.x, a.y - height)
+  ctx.lineTo(b.x, b.y - height)
+  ctx.lineTo(b.x, b.y - height - 5)
+  ctx.lineTo(a.x, a.y - height - 5)
+  ctx.closePath()
+  ctx.fill()
 
+  if (!opening) return
+  // 문 또는 창문 — 벽 길이의 t0~t1 구간에 낸다
+  const [kind, t0, t1] = opening
+  const p0 = { x: a.x + (b.x - a.x) * t0, y: a.y + (b.y - a.y) * t0 }
+  const p1 = { x: a.x + (b.x - a.x) * t1, y: a.y + (b.y - a.y) * t1 }
+  const top = kind === 'door' ? height * 0.86 : height * 0.66
+  const bottom = kind === 'door' ? 0 : height * 0.26
+  ctx.fillStyle = kind === 'door' ? '#8b5e3c' : '#d6ecf7'
+  ctx.strokeStyle = kind === 'door' ? '#6b4630' : '#9cc6dd'
+  ctx.beginPath()
+  ctx.moveTo(p0.x, p0.y - bottom)
+  ctx.lineTo(p1.x, p1.y - bottom)
+  ctx.lineTo(p1.x, p1.y - top)
+  ctx.lineTo(p0.x, p0.y - top)
+  ctx.closePath()
+  ctx.fill()
+  ctx.stroke()
+}
+
+/** 바깥벽 — 안쪽 두 면만 세운다. 앞쪽은 잘라내야 방 안이 보인다. */
+function drawOuterWalls(ctx, g) {
+  ctx.save()
+  drawWall(ctx, g, 0, FLOOR_V, 0, 0, WALL_H, ['window', 0.55, 0.8])
+  drawWall(ctx, g, 0, 0, FLOOR_U, 0, WALL_H, ['window', 0.55, 0.78])
   ctx.restore()
 }
 
-/** 방을 가르는 칸막이가 놓이는 자리들. 화면 칸 사이사이에 선다. */
-function partitions(g) {
-  const out = []
-  // 칸(가로) 사이 — 화면에서 세로로 선 벽
-  for (let i = 1; i < g.roomsAcross; i++) {
-    out.push({ kind: 'd', at: (g.cols[i - 1] + g.cols[i]) / 2 })
-  }
-  // 줄(세로) 사이 — 방이 위아래로도 나뉘는 배치에서만
-  const roomsDown = Math.ceil(g.rows.length / 2)
-  for (let r = 1; r < roomsDown; r++) {
-    // 방 하나가 두 줄을 쓰므로, 아랫방 첫 줄과 윗방 둘째 줄 사이에 세운다.
-    // 딱 가운데에 두면 위 칸 이름표와 겹쳐서, 조금 아래로 내린다.
-    const a = g.rows[r * 2 - 1]
-    const b = g.rows[r * 2]
-    out.push({ kind: 's', at: a + (b - a) * 0.62 })
-  }
-  return out
-}
-
 /**
- * 방 칸막이 — 실제 집처럼 방이 나뉘어 보이게 한다.
- * ⚠️ **기구를 가리면 안 된다.** 그래서 바깥벽(WALL_H)보다 훨씬 낮게 세우고, 기구가 놓인
- *    칸 사이의 빈 자리에만 둔다(2026-08-07 사용자 요청).
+ * 방 칸막이 — 낮게 세워 기구를 가리지 않는다. 문을 내어 방끼리 이어진 것처럼 보이게 한다.
+ * ⚠️ **바닥을 칠한 뒤에** 그려야 한다. 먼저 그리면 방바닥이 그 위를 덮어 칸막이가 사라진다.
  */
-const PARTITION_H = 26
-
 function drawPartitions(ctx, g) {
   ctx.save()
-  for (const p of partitions(g)) {
-    let a
-    let b
-    if (p.kind === 'd') {
-      const [ea, eb] = dividerEnds(g, p.at)
-      a = project(g, ea.u, ea.v)
-      b = project(g, eb.u, eb.v)
-    } else {
-      // s가 고정된 선 — 바닥 안에서 d가 갈 수 있는 범위만큼
-      const s = p.at
-      const dMin = Math.max(-g.dMax, -s, s - 2 * FLOOR_V)
-      const dMax = Math.min(g.dMax, s, 2 * FLOOR_U - s)
-      const fa = ds(dMin, s)
-      const fb = ds(dMax, s)
-      a = project(g, fa.u, fa.v)
-      b = project(g, fb.u, fb.v)
-    }
-    ctx.fillStyle = WALL
-    ctx.strokeStyle = '#b8c2cf'
-    ctx.lineWidth = 1.5
-    ctx.beginPath()
-    ctx.moveTo(a.x, a.y)
-    ctx.lineTo(b.x, b.y)
-    ctx.lineTo(b.x, b.y - PARTITION_H)
-    ctx.lineTo(a.x, a.y - PARTITION_H)
-    ctx.closePath()
-    ctx.fill()
-    ctx.stroke()
-    // 벽 윗면
-    ctx.fillStyle = WALL_TOP
-    ctx.beginPath()
-    ctx.moveTo(a.x, a.y - PARTITION_H)
-    ctx.lineTo(b.x, b.y - PARTITION_H)
-    ctx.lineTo(b.x, b.y - PARTITION_H - 4)
-    ctx.lineTo(a.x, a.y - PARTITION_H - 4)
-    ctx.closePath()
-    ctx.fill()
-  }
+  drawWall(ctx, g, 190, 0, 190, 150, PARTITION_H, ['door', 0.35, 0.62])
+  drawWall(ctx, g, 0, 150, 190, 150, PARTITION_H, ['door', 0.4, 0.68])
+  drawWall(ctx, g, 190, 135, 420, 135, PARTITION_H, ['door', 0.3, 0.55])
+  drawWall(ctx, g, 190, 150, 190, 330, PARTITION_H, null)
   ctx.restore()
 }
 
-/**
- * 방 이름표 — 방마다 어떤 방인지 적는다.
- * 자리는 **벽면 위**다. 바닥에 적으면 기구나 이름표와 부딪히는데, 벽면은 비어 있다.
- */
 function drawRoomNames(ctx, g) {
   ctx.save()
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.font = 'bold 13px system-ui, sans-serif'
-  ctx.fillStyle = '#64748b'
-
-  const roomsDown = Math.ceil(g.rows.length / 2)
-  const parts = partitions(g)
-  const sParts = parts.filter((p) => p.kind === 's')
-
-  for (const [i, room] of ROOMS.entries()) {
-    const rc = i % g.roomsAcross
-    const rr = Math.floor(i / g.roomsAcross)
-    if (rc >= g.cols.length || rr >= roomsDown) continue
-    const d = g.cols[rc]
-    let y
-    if (rr === 0) {
-      // 맨 안쪽 방 — 바깥 뒷벽에 붙인다
-      const backS = Math.max(g.sMin, Math.abs(d))
-      y = project(g, ...Object.values(ds(d, backS))).y - WALL_H / 2
-    } else {
-      // 앞쪽 방 — 바로 뒤에 선 칸막이 벽면에 붙인다
-      const wallS = sParts[rr - 1].at
-      y = project(g, ...Object.values(ds(d, wallS))).y - PARTITION_H / 2
-    }
-    ctx.fillText(room.name, g.OX + d * g.kx, y)
+  ctx.fillStyle = SUBTEXT
+  for (const r of ROOMS) {
+    const p = project(g, r.nameU, r.nameV)
+    ctx.fillText(r.name, p.x, p.y)
   }
   ctx.restore()
 }
 
-/** 안쪽 두 벽만 세운다 — 앞쪽은 잘라내야 방 안이 보인다(참고 그림과 같은 단면 조감도). */
-function drawWalls(ctx, g) {
-  ctx.save()
-  // 바닥 다각형의 변 중 **안쪽(깊이가 얕은 쪽)** 변에만 벽을 세운다. 앞쪽 변은 벽이 없어야
-  // 방 안이 들여다보인다. 귀퉁이를 잘라낸 뒤로는 안쪽 변이 셋(모서리 깎인 면 포함)이다.
-  const poly = floorPolygon(g)
-  const BACK_S = g.sMin + 210
-  const quads = []
-  for (let i = 0; i < poly.length; i++) {
-    const a = poly[i]
-    const b = poly[(i + 1) % poly.length]
-    if (Math.max(a.u + a.v, b.u + b.v) <= BACK_S) {
-      quads.push([project(g, a.u, a.v), project(g, b.u, b.v)])
-    }
-  }
-  for (const [a, b] of quads) {
-    ctx.fillStyle = WALL
-    ctx.strokeStyle = '#b8c2cf'
-    ctx.lineWidth = 2
-    ctx.beginPath()
-    ctx.moveTo(a.x, a.y)
-    ctx.lineTo(b.x, b.y)
-    ctx.lineTo(b.x, b.y - WALL_H)
-    ctx.lineTo(a.x, a.y - WALL_H)
-    ctx.closePath()
-    ctx.fill()
-    ctx.stroke()
-  }
-  // 벽 윗면(두께) — 잘라낸 단면처럼 보이게 얇은 띠를 얹는다
-  ctx.fillStyle = WALL_TOP
-  for (const [a, b] of quads) {
-    ctx.beginPath()
-    ctx.moveTo(a.x, a.y - WALL_H)
-    ctx.lineTo(b.x, b.y - WALL_H)
-    ctx.lineTo(b.x, b.y - WALL_H - 5)
-    ctx.lineTo(a.x, a.y - WALL_H - 5)
-    ctx.closePath()
-    ctx.fill()
-  }
-  ctx.restore()
-}
-
-/** 배전반 — 모든 전선이 여기서 나간다. 집 전체가 한 곳에서 전기를 받는다는 것이 보인다. */
 function drawPanel(ctx, g, anyOn) {
-  const pd = panelDS(g)
-  const f = ds(pd.d, pd.s)
-  const p = project(g, f.u, f.v)
+  const p = project(g, PANEL.u, PANEL.v)
   ctx.save()
   ctx.fillStyle = anyOn ? '#fef3c7' : '#f1f5f9'
   ctx.strokeStyle = anyOn ? '#d97706' : '#94a3b8'
-  ctx.lineWidth = 3
-  roundedRect(ctx, p.x - 27, p.y - 38, 54, 32, 5)
+  ctx.lineWidth = 2.5
+  roundedRect(ctx, p.x - 26, p.y - 34, 52, 30, 5)
   ctx.fill()
   ctx.stroke()
   ctx.fillStyle = anyOn ? '#b45309' : '#64748b'
   ctx.font = 'bold 11px system-ui, sans-serif'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
-  ctx.fillText('배전반', p.x, p.y - 22)
+  ctx.fillText('배전반', p.x, p.y - 19)
   ctx.restore()
 }
 
-/**
- * 전선 한 줄(바닥을 따라 놓인다). 켜져 있으면 굵고 노랗게, 전기가 흐르는 것이 점으로 보인다.
- * **굵기는 그 기구가 쓰는 전력에 따라 달라진다** — 많이 쓰는 기구일수록 굵다.
- */
-function drawWire(ctx, pts, on, thickness, time, phase) {
+/** 전선 — 배전반에서 기구로. 켜지면 굵고 노랗게, 전기가 흐르는 것이 점으로 보인다. */
+function drawWire(ctx, from, to, on, thickness, time, phase) {
   ctx.save()
   ctx.lineCap = 'round'
-  ctx.lineJoin = 'round'
   ctx.strokeStyle = on ? WIRE_ON : WIRE_OFF
-  ctx.lineWidth = on ? thickness : 2
+  ctx.lineWidth = on ? thickness : 1.8
   ctx.beginPath()
-  ctx.moveTo(pts[0].x, pts[0].y)
-  for (const p of pts.slice(1)) ctx.lineTo(p.x, p.y)
+  ctx.moveTo(from.x, from.y)
+  ctx.lineTo(to.x, to.y)
   ctx.stroke()
-
   if (on) {
-    const segs = []
-    let total = 0
-    for (let i = 1; i < pts.length; i++) {
-      const len = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y)
-      segs.push({ a: pts[i - 1], b: pts[i], len })
-      total += len
-    }
+    const len = Math.hypot(to.x - from.x, to.y - from.y)
     ctx.fillStyle = '#fff7ed'
-    const spacing = 34
-    for (let d = (time * 60 + phase) % spacing; d < total; d += spacing) {
-      let rest = d
-      for (const s of segs) {
-        if (rest <= s.len) {
-          const t = rest / s.len
-          ctx.beginPath()
-          ctx.arc(s.a.x + (s.b.x - s.a.x) * t, s.a.y + (s.b.y - s.a.y) * t, thickness * 0.42, 0, Math.PI * 2)
-          ctx.fill()
-          break
-        }
-        rest -= s.len
-      }
+    const spacing = 32
+    for (let d = (time * 58 + phase) % spacing; d < len; d += spacing) {
+      const t = d / len
+      ctx.beginPath()
+      ctx.arc(from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t, thickness * 0.4, 0, Math.PI * 2)
+      ctx.fill()
     }
   }
   ctx.restore()
 }
 
-/**
- * @param state.showEnergy - 에너지 전환 표시 여부(기본은 감춤 — 학습지에서 학생이 채울 칸이다)
- */
+/** 이름표(말풍선) + 기구까지 잇는 지시선 — 참고 그림과 같은 방식. */
+function drawCard(ctx, s, a, model, state, on, watt) {
+  const c = s.card
+  const anchorX = c.x + c.w / 2 < s.x ? c.x + c.w : c.x
+  const anchorY = c.y + c.h / 2
+  ctx.save()
+  ctx.strokeStyle = on ? '#e0a44a' : '#c9bcae'
+  ctx.lineWidth = 1.5
+  ctx.beginPath()
+  ctx.moveTo(anchorX, anchorY)
+  ctx.lineTo(s.x, s.y - 16)
+  ctx.stroke()
+  ctx.fillStyle = on ? '#e0a44a' : '#c9bcae'
+  ctx.beginPath()
+  ctx.arc(s.x, s.y - 16, 3, 0, Math.PI * 2)
+  ctx.fill()
+
+  ctx.fillStyle = on ? '#fff7e6' : '#ffffff'
+  ctx.strokeStyle = on ? '#e0a44a' : '#ddd2c4'
+  ctx.lineWidth = on ? 2.5 : 1.5
+  roundedRect(ctx, c.x, c.y, c.w, c.h, 10)
+  ctx.fill()
+  ctx.stroke()
+
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'top'
+  ctx.fillStyle = TEXT
+  ctx.font = 'bold 13px system-ui, sans-serif'
+  ctx.fillText(a.name, c.x + 11, c.y + 8)
+  ctx.fillStyle = on ? '#b45309' : SUBTEXT
+  ctx.font = 'bold 13px system-ui, sans-serif'
+  ctx.fillText(watt + ' W', c.x + 11, c.y + 26)
+
+  ctx.font = '11px system-ui, sans-serif'
+  if (state.showEnergy) {
+    ctx.fillStyle = '#0f766e'
+    ctx.fillText('→ ' + a.energy, c.x + 66, c.y + 27)
+  }
+  if (!on && model.countStandby && a.standby > 0) {
+    ctx.fillStyle = '#b91c1c'
+    ctx.fillText('대기 ' + a.standby + ' W', c.x + 11, c.y + 43)
+  } else {
+    ctx.fillStyle = on ? '#b45309' : '#a09080'
+    ctx.fillText(on ? '켜짐 — 눌러서 끄기' : '꺼짐 — 눌러서 켜기', c.x + 11, c.y + 43)
+  }
+  ctx.restore()
+}
+
 export function drawHome(ctx, cssWidth, cssHeight, model, state) {
   const layout = computeLayout(cssWidth, cssHeight)
   const g = layout.g
@@ -671,113 +619,54 @@ export function drawHome(ctx, cssWidth, cssHeight, model, state) {
   const time = state.time || 0
   const anyOn = APPLIANCES.some((a) => isOn(model, a.id))
   const maxW = Math.max(...APPLIANCES.map((a) => a.watt))
-
-  drawWalls(ctx, g)
-  drawFloor(ctx, g)
-  drawPartitions(ctx, g)
-  drawRoomNames(ctx, g)
-
-  // 바닥 앞쪽을 가로지르는 간선 — 배전반에서 오른쪽 끝까지
   const list = slots(g)
-  const pd = panelDS(g)
-  /** 화면 칸 좌표 (d,s) 두 점을 잇는 전선 — 바닥 위에 놓인 것으로 그려진다. */
-  const wireDS = (a, b, on, th, phase) => {
-    const fa = ds(a.d, a.s)
-    const fb = ds(b.d, b.s)
-    drawWire(ctx, [project(g, fa.u, fa.v), project(g, fb.u, fb.v)], on, th, time, phase)
-  }
 
-  if (g.busAlong === 'row') {
-    // 두 줄 사이를 가로지르는 간선 → 기구마다 위·아래로 갈라진다
-    const far = Math.max(...g.cols) + BRANCH_OFF + 12
-    wireDS({ d: pd.d, s: g.busS }, { d: far, s: g.busS }, anyOn, 5, 0)
-  } else {
-    // 두 칸 사이를 지나는 간선 → 기구마다 좌·우로 갈라진다
-    const far = Math.max(...g.rows) + 40
-    wireDS({ d: g.busD, s: pd.s }, { d: g.busD, s: far }, anyOn, 5, 0)
-  }
+  drawOuterWalls(ctx, g)
+  drawFloor(ctx, g)
+  drawPartitions(ctx, g) // 바닥 뒤에 그려야 덮이지 않는다
+  for (const f of FURNITURE) drawFurniture(ctx, g, f)
+  drawRoomNames(ctx, g) // 가구 뒤에 그려야 가구에 가리지 않는다
 
+  const panelPt = project(g, PANEL.u, PANEL.v)
   list.forEach((s, i) => {
     const a = APPLIANCES.find((x) => x.id === s.id)
     const on = isOn(model, s.id)
-    // 굵기는 소비 전력에 따라. 로그로 눌러야 8W와 1800W가 한 화면에 같이 보인다.
-    const thickness = 3 + 5 * (Math.log(a.watt + 1) / Math.log(maxW + 1))
-    if (g.busAlong === 'row') {
-      // 간선에서 곧장 기구로 올라가면 이름표 한가운데를 뚫고 지나간다.
-      // 옆으로 비켜 올라간 뒤 기구 높이에서 꺾어 들어간다.
-      const off = s.d + BRANCH_OFF
-      const fa = ds(off, g.busS)
-      const fb = ds(off, s.s)
-      const fc = ds(s.d, s.s)
-      drawWire(
-        ctx,
-        [project(g, fa.u, fa.v), project(g, fb.u, fb.v), project(g, fc.u, fc.v)],
-        on,
-        thickness,
-        time,
-        i * 11,
-      )
-    } else {
-      wireDS({ d: g.busD, s: s.s }, { d: s.d, s: s.s }, on, thickness, i * 11)
-    }
+    const thickness = 2.5 + 4.5 * (Math.log(a.watt + 1) / Math.log(maxW + 1))
+    drawWire(ctx, panelPt, { x: s.x, y: s.y }, on, thickness, time, i * 9)
   })
-
   drawPanel(ctx, g, anyOn)
 
-  // 기구는 **뒤에서 앞으로** 그린다 — 앞의 것이 뒤의 것을 가려야 입체로 보인다.
-  ;[...list]
-    .sort((p, q) => p.depth - q.depth)
-    .forEach((s) => {
-      const a = APPLIANCES.find((x) => x.id === s.id)
-      const on = isOn(model, s.id)
-      const watt = applianceWatt(model, s.id)
-
-      if (on) {
-        ctx.save()
-        ctx.fillStyle = 'rgba(245, 158, 11, 0.18)'
-        ctx.beginPath()
-        ctx.ellipse(s.x, s.y, 40, 15, 0, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.restore()
-      }
-      // 바닥 그림자 — 기구가 바닥에 서 있는 느낌을 준다
+  // 기구는 뒤에서 앞으로 — 앞의 것이 뒤의 것을 가려야 입체로 보인다
+  const back2front = [...list].sort((p, q) => p.depth - q.depth)
+  for (const s of back2front) {
+    const on = isOn(model, s.id)
+    if (on) {
       ctx.save()
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.10)'
+      ctx.fillStyle = 'rgba(245, 158, 11, 0.20)'
       ctx.beginPath()
-      ctx.ellipse(s.x, s.y, 22, 8, 0, 0, Math.PI * 2)
+      ctx.ellipse(s.x, s.y, 30, 12, 0, 0, Math.PI * 2)
       ctx.fill()
       ctx.restore()
+    }
+    ctx.save()
+    ctx.fillStyle = 'rgba(60, 40, 20, 0.12)'
+    ctx.beginPath()
+    ctx.ellipse(s.x, s.y, 17, 6, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
 
-      ctx.save()
-      ctx.translate(s.x, s.y - 22) // 바닥에 세워 놓는다
-      ICONS[s.id]?.(ctx, on, time)
-      ctx.restore()
+    ctx.save()
+    ctx.translate(s.x, s.y - 18)
+    ctx.scale(0.82, 0.82) // 집 안에 놓이니 조금 작게
+    if (ICONS[s.id]) ICONS[s.id](ctx, on, time)
+    ctx.restore()
+  }
 
-      // 이름과 전력 — 진한 색으로 적는다(예전 회색 글씨는 잘 안 보였다)
-      ctx.save()
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'top'
-      ctx.fillStyle = on ? '#0f172a' : TEXT
-      ctx.font = 'bold 13px system-ui, sans-serif'
-      ctx.fillText(a.name, s.x, s.y + 6)
-      ctx.fillStyle = on ? '#b45309' : SUBTEXT
-      ctx.font = 'bold 12px system-ui, sans-serif'
-      ctx.fillText(`${watt} W`, s.x, s.y + 22)
-
-      let line = s.y + 37
-      if (state.showEnergy) {
-        ctx.fillStyle = '#0f766e'
-        ctx.font = '11px system-ui, sans-serif'
-        ctx.fillText(`→ ${a.energy}`, s.x, line)
-        line += 14
-      }
-      if (!on && model.countStandby && a.standby > 0) {
-        ctx.fillStyle = '#b91c1c'
-        ctx.font = 'bold 11px system-ui, sans-serif'
-        ctx.fillText(`대기 ${a.standby} W`, s.x, line)
-      }
-      ctx.restore()
-    })
+  // 이름표는 맨 위에 — 무엇에도 가리지 않아야 한다
+  for (const s of list) {
+    const a = APPLIANCES.find((x) => x.id === s.id)
+    drawCard(ctx, s, a, model, state, isOn(model, s.id), applianceWatt(model, s.id))
+  }
 
   ctx.restore()
 }
