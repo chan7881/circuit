@@ -383,26 +383,41 @@ function drawScopeCharges(ctx, model, showCharges, spread) {
 
   // 전하 쌍을 세 구역에 나눠 깔아둔다. 중성 상태에서 +와 −가 **같은 수로 골고루** 있는 것이
   // 보여야 하므로, 전자도 처음에는 자기 양성자 바로 옆에 그린다.
+  // 검전기는 금속 한 덩어리라, 중성일 때 전하가 **금속판·기둥·금속박에 고루** 퍼져 있어야
+  // 한다. 예전에는 자리를 "앞의 둘은 금속판, 그다음 둘은 기둥, 나머지는 금속박"으로 나눠
+  // 놓았는데, 전하 개수를 4개로 줄이면서 금속박 차례가 아예 오지 않아 전부 위쪽에만 뭉쳐
+  // 보였다(2026-08-07 사용자 지적). 이제 네 구역을 **번갈아** 돌며 놓는다.
   const homes = []
   for (let i = 0; i < CHARGE_PAIRS; i++) {
-    if (i < 2) {
-      homes.push({ x: zones.plate.x + (i - 0.5) * 46, y: zones.plate.y })
-    } else if (i < 4) {
-      homes.push({ x: zones.stem.x, y: zones.stem.y + (i - 3) * 34 })
+    const zone = i % 4
+    const rep = Math.floor(i / 4)
+    if (zone === 0) {
+      homes.push({ x: zones.plate.x + (rep - 0.5) * 46, y: zones.plate.y })
+    } else if (zone === 1) {
+      homes.push({ x: zones.stem.x, y: zones.stem.y + (rep - 0.5) * 30 })
     } else {
-      // 금속박이 닫혀 있으면 두 장이 거의 겹치므로, 좌우로 최소 간격을 보장한다.
-      // (그냥 금속박 위 점을 쓰면 닫힌 상태에서 전하 네 개가 한 덩어리로 뭉쳐 안 읽힌다)
-      const dir = i % 2 === 0 ? -1 : 1
-      const p = foilPoint(zones.foil.angle, 0.55, dir)
-      homes.push({ x: SCOPE_X + dir * Math.max(30, Math.abs(p.x - SCOPE_X)), y: p.y })
+      // 금속박이 닫혀 있으면 두 장이 거의 겹치므로 좌우로 최소 간격을 보장한다.
+      const dir = zone === 2 ? -1 : 1
+      const t = 0.45 + rep * 0.24
+      const p = foilPoint(zones.foil.angle, t, dir)
+      homes.push({ x: SCOPE_X + dir * Math.max(26, Math.abs(p.x - SCOPE_X)), y: p.y })
     }
   }
 
-  // 옮겨간 전자가 도착할 자리 — 몇 개가 몰렸는지 **세어서 읽을 수 있어야** 하므로 겹치지 않게
-  // 편다. 금속박 쪽은 두 장에 번갈아 나눠 붙이고, 금속판 쪽은 판 위에 가로로 늘어놓는다.
-  const farSpots = Array.from({ length: CHARGE_PAIRS }, (_, k) =>
-    foilPoint(zones.foil.angle, 0.5 + Math.floor(k / 2) * 0.2, k % 2 === 0 ? -1 : 1),
-  )
+  /**
+   * 금속박으로 몰려간 전자가 놓일 자리를 **끝에서부터** 하나씩 내준다.
+   * 전하는 뾰족한 끝에 몰리므로 금속박 **끝까지** 가야 직관적이다 — 예전에는 가장 먼 자리가
+   * 0.7밖에 안 돼 "가운데까지만 온다"처럼 보였다(2026-08-07 사용자 지적).
+   * 좌우 잎에 번갈아 붙여 두 잎이 같은 만큼 무거워 보이게 한다.
+   */
+  let foilUsed = 0
+  const nextFoilSpot = () => {
+    const k = foilUsed++
+    const dir = k % 2 === 0 ? -1 : 1
+    const t = Math.max(0.32, 0.95 - Math.floor(k / 2) * 0.22)
+    return foilPoint(zones.foil.angle, t, dir)
+  }
+  /** 금속판 쪽으로 끌려온 전자가 놓일 자리 — 판 위에 가로로 늘어놓는다. */
   const nearSpots = Array.from({ length: CHARGE_PAIRS }, (_, k) => ({
     x: zones.plate.x + (k - (CHARGE_PAIRS - 1) / 2) * 23,
     y: zones.plate.y,
@@ -419,22 +434,21 @@ function drawScopeCharges(ctx, model, showCharges, spread) {
   const nElectrons = Math.max(0, CHARGE_PAIRS - model.preCharge)
   const nShifted = Math.min(shifted, nElectrons)
 
+  // 금속박으로 가는 전자(유도로 밀려난 것 + 접촉으로 넘어온 것)는 **한 곳에서 자리를 받아**
+  // 끝에서부터 차곡차곡 쌓인다. 따로따로 자리를 잡으면 서로 겹치거나 한쪽 잎에만 몰린다.
   for (let k = 0; k < nElectrons; k++) {
     if (k < nShifted) {
-      const spot = drift > 0 ? farSpots[k] : nearSpots[k]
+      // 유도로 옮겨간 전자 — (−)막대면 금속박 끝으로, (+)막대면 금속판으로
+      const spot = drift > 0 ? nextFoilSpot() : nearSpots[k]
       drawMinus(ctx, spot.x, spot.y)
       continue
     }
     const rest = k - nShifted
     if (rest < CHARGE_PAIRS) {
-      drawMinus(ctx, homes[rest].x + 9, homes[rest].y)
+      drawMinus(ctx, homes[rest].x + 9, homes[rest].y) // 아직 제자리에 있는 전자
     } else {
-      // 접촉으로 넘어와 원래보다 많아진 전자 — 금속박 끝쪽에 따로 붙인다.
-      // 유도로 이미 붙은 개수(nShifted)에 이어서 좌우를 번갈아 놓는다. 그냥 0부터 번갈으면
-      // 유도된 것과 같은 쪽에 몰려, 두 금속박이 같은 전하를 띠는데도 한쪽만 무거워 보인다.
-      const extra = rest - CHARGE_PAIRS
-      const p = foilPoint(zones.foil.angle, 0.92, (nShifted + extra) % 2 === 0 ? -1 : 1)
-      drawMinus(ctx, p.x, p.y + Math.floor(extra / 2) * 15, 7)
+      const p = nextFoilSpot() // 접촉으로 넘어와 원래보다 많아진 전자
+      drawMinus(ctx, p.x, p.y)
     }
   }
 }
