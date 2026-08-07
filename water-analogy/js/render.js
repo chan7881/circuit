@@ -16,6 +16,14 @@ const WATER_COLOR = '#2563eb'
 const CURRENT_COLOR = '#f59e0b' // circuit 시뮬레이터의 전류 색과 같게 맞춘다
 const PIPE_FILL = '#e0f2fe'
 const WIRE_COLOR = '#334155'
+/**
+ * 저항에 해당하는 자리(물 쪽은 좁은 관)를 나타내는 색.
+ * MAPPING의 'resist' 뱃지 색과 **같은 값**이라, 뱃지·관·저항 기호가 한 색으로 묶인다.
+ *
+ * 예전에는 좁은 관이 나머지 관과 똑같은 회색이라, 굵기를 바꿔 보기 전에는 어느 관이
+ * 저항인지 알 수 없었다(2026-08-07 사용자 지적).
+ */
+const RESIST_ACCENT = '#0891b2'
 
 export function computeLayout(cssWidth, cssHeight) {
   const scale = Math.min(cssWidth / LOGICAL_WIDTH, cssHeight / LOGICAL_HEIGHT)
@@ -120,10 +128,12 @@ function drawLoopPipe(ctx, origin, model, isWater) {
 
   for (const seg of segments) {
     const w = pipeWidthAt(seg.key, level)
+    const isResist = seg.key === 'resist'
     if (isWater) {
-      // 물: 관 벽 + 안쪽 물
-      ctx.strokeStyle = '#94a3b8'
-      ctx.lineWidth = w + 5
+      // 물: 관 벽 + 안쪽 물.
+      // 저항에 해당하는 관만 벽 색을 달리해, 굵기를 바꿔 보지 않아도 어느 관인지 바로 보이게 한다.
+      ctx.strokeStyle = isResist ? RESIST_ACCENT : '#94a3b8'
+      ctx.lineWidth = w + (isResist ? 8 : 5)
       ctx.beginPath()
       ctx.moveTo(seg.from.x, seg.from.y)
       ctx.lineTo(seg.to.x, seg.to.y)
@@ -134,6 +144,19 @@ function drawLoopPipe(ctx, origin, model, isWater) {
       ctx.moveTo(seg.from.x, seg.from.y)
       ctx.lineTo(seg.to.x, seg.to.y)
       ctx.stroke()
+
+      // 좁은 관의 위아래 끝에 이음매(플랜지)를 그려, 여기부터 여기까지가 따로 끼운
+      // 부품이라는 것을 드러낸다 — 전기 쪽의 저항 기호와 같은 역할이다.
+      if (isResist) {
+        ctx.strokeStyle = RESIST_ACCENT
+        ctx.lineWidth = 4
+        for (const end of [seg.from, seg.to]) {
+          ctx.beginPath()
+          ctx.moveTo(end.x - 13, end.y)
+          ctx.lineTo(end.x + 13, end.y)
+          ctx.stroke()
+        }
+      }
     } else {
       // 전기: 전선. 저항 자리는 굵기 대신 지그재그 기호로 표현하므로 선만 얇게 긋는다
       ctx.strokeStyle = WIRE_COLOR
@@ -284,7 +307,7 @@ function drawResistor(ctx, p, level) {
   const h = 34
   const w = [14, 20, 26][level] ?? 20 // 저항이 클수록 기호도 크게
   ctx.fillStyle = '#fff'
-  ctx.strokeStyle = WIRE_COLOR
+  ctx.strokeStyle = RESIST_ACCENT // 물 쪽 좁은 관과 같은 색 — 둘이 짝이라는 게 색으로 보인다
   ctx.lineWidth = 3
   roundedRect(ctx, p.x - w / 2, p.y - h / 2, w, h, 3)
   ctx.fill()
@@ -437,7 +460,7 @@ export function draw(ctx, cssWidth, cssHeight, model, state) {
     // 대응 관계(어느 것이 어느 것에 해당하는가)만 토글로 감춘다.
     const badge = (id) => (state.showMapping ? MAPPING.find((m) => m.id === id).color : null)
     drawLabel(ctx, gate.x, gate.y - 32, isWater ? '밸브' : '스위치', '#64748b', badge('gate'))
-    drawLabel(ctx, resist.x - 48, resist.y - 7, isWater ? pipeLevel(model).label : pipeLevel(model).resistorLabel, '#64748b', badge('resist'))
+    drawLabel(ctx, resist.x - 48, resist.y - 7, isWater ? pipeLevel(model).label : pipeLevel(model).resistorLabel, RESIST_ACCENT, badge('resist'))
     drawLabel(ctx, load.x, load.y + 32, isWater ? '물레방아' : '전구', '#64748b', badge('load'))
     drawLabel(ctx, source.x + 48, source.y - 7, isWater ? '펌프' : '전지', '#64748b', badge('source'))
 

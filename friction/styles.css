@@ -234,7 +234,13 @@ input[type="range"].slider::-moz-range-thumb {
     --accent: #60a5fa;
     --accent-bg: #1e3a5f;
   }
-  /* 캔버스 그림은 밝은 배경을 전제로 그려지므로 캔버스만 밝게 유지한다(circuit과 같은 방침) */
+  /*
+    캔버스 그림은 밝은 배경을 전제로 그려지므로 **캔버스만 밝게 유지한다**(circuit과 같은 방침).
+    바깥 UI(상단바·조작·힌트)는 어두워지고 그림판만 흰 종이처럼 남는다.
+    캔버스를 새로 추가할 때는 여기에도 함께 적어 줘야 한다 — 안 그러면 어두운 배경 위에
+    어두운 글씨가 그려져 안 보인다.
+  */
   body { background: #0f172a; }
-  #board { background: #f8fafc; }
+  #board,
+  #house { background: #f8fafc; }
 }

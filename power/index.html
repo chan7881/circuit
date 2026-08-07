@@ -8,31 +8,33 @@
 <link rel="stylesheet" href="../friction/styles.css" />
 <style>
   /*
-    우리 집 화면은 카드 목록이라 캔버스 대신 HTML로 그린다 — 기기마다 글자 크기·줄바꿈이
-    알아서 맞아 작은 화면에서도 읽힌다. 전구 비교 화면만 캔버스다(그림이 본체이므로).
+    우리 집 화면은 **집을 잘라 본 그림**이다. 기구를 방 안에 놓고 직접 누르게 하고, 배전반에서
+    나온 전선이 각 기구로 이어지는 것을 보인다 — 카드 목록보다 "집에서 전기를 쓴다"가 훨씬
+    잘 와닿는다(2026-08-07 사용자 피드백). 합계는 그림 아래 HTML로 둔다(숫자는 글자가 또렷한
+    편이 읽기 좋고, 화면이 좁아져도 줄바꿈이 알아서 맞는다).
   */
-  #home { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 12px 4px; }
-  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; }
-  .card {
-    display: flex; flex-direction: column; align-items: center; gap: 2px;
-    border: 2px solid #e2e8f0; border-radius: 12px; background: #fff;
-    padding: 8px 6px; min-height: 84px; cursor: pointer; font: inherit; color: inherit;
-  }
-  .card[aria-pressed="true"] { border-color: #f59e0b; background: #fffbeb; }
-  .card .cname { font-size: 13px; font-weight: 600; text-align: center; line-height: 1.25; }
-  .card .cwatt { font-size: 12px; color: #64748b; }
-  .card .cstate { font-size: 11px; font-weight: 700; color: #94a3b8; }
-  .card[aria-pressed="true"] .cstate { color: #b45309; }
-  .card .cenergy { font-size: 11px; color: #0f766e; font-weight: 600; }
-  .card .cstandby { font-size: 11px; color: #b91c1c; font-weight: 600; }
+  #home { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 6px 10px 4px; }
+  #house { flex: 1; min-height: 0; width: 100%; display: block; touch-action: none; }
 
-  .totals { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-  .total { flex: 1 1 110px; border: 1px solid #e2e8f0; border-radius: 10px; padding: 6px 10px; background: #f8fafc; }
-  .total dt { font-size: 11px; color: #64748b; }
-  .total dd { margin: 2px 0 0; font-size: 17px; font-weight: 700; }
-  .bar { height: 10px; border-radius: 5px; background: #e2e8f0; overflow: hidden; margin-top: 8px; }
+  /*
+    색은 되도록 공용 변수(--panel·--border·--text)로 쓴다. 그래야 다크 모드에서 저절로 따라온다
+    — 값을 직접 박아 두면 어두운 배경에 옅은 회색 글씨가 남아 안 보인다.
+    예전에는 이 글자들이 옅은 회색(#64748b·#94a3b8)이라 밝은 화면에서도 잘 안 보였다.
+  */
+  .totals { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; flex-shrink: 0; }
+  .total { flex: 1 1 110px; border: 1px solid var(--border); border-radius: 10px; padding: 6px 10px; background: var(--panel); }
+  .total dt { font-size: 12px; color: var(--text); font-weight: 600; }
+  .total dd { margin: 2px 0 0; font-size: 17px; font-weight: 700; color: var(--text); }
+  .bar { height: 10px; border-radius: 5px; background: var(--border); overflow: hidden; margin-top: 8px; flex-shrink: 0; }
   .bar > div { height: 100%; background: #f59e0b; border-radius: 5px; }
-  .note { font-size: 11px; color: #94a3b8; margin: 6px 0 0; }
+  .note { font-size: 12px; color: var(--text); opacity: 0.8; margin: 6px 0 0; flex-shrink: 0; }
+
+  /* 납작한 임베드에서는 합계 칸을 줄여 집 그림에 자리를 내준다 */
+  @media (max-height: 420px) {
+    .total dd { font-size: 15px; }
+    .note { display: none; }
+    .bar { display: none; }
+  }
 </style>
 </head>
 <body>
@@ -52,7 +54,7 @@
 
   <!-- 모드 1: 우리 집 (HTML) -->
   <main id="home">
-    <div class="cards" id="cards"></div>
+    <canvas id="house" aria-label="집 안의 전기 기구들. 기구를 눌러 켜고 끌 수 있다"></canvas>
     <dl class="totals">
       <div class="total"><dt>지금 쓰는 전력</dt><dd id="t-watt">0 W</dd></div>
       <div class="total"><dt>한 달 내내 쓰면</dt><dd id="t-kwh">0 kWh</dd></div>
