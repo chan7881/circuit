@@ -1,13 +1,9 @@
 // 부트스트랩: DOM 이벤트 ↔ 순수 모델 ↔ 그리기. 이 파일만 DOM을 직접 건드린다.
 
 import {
-  CONDUCTOR,
-  INSULATOR,
   createModel,
   setRodCharge,
   setRodTipX,
-  setMaterial,
-  setPreCharge,
   setMode,
   stepCan,
   stepScope,
@@ -25,8 +21,6 @@ const state = { showCharges: true, time: 0 }
 const canvas = document.getElementById('board')
 const ctx = canvas.getContext('2d')
 const hintBar = document.getElementById('hint-bar')
-const materialGroup = document.getElementById('material-group')
-const prechargeGroup = document.getElementById('precharge-group')
 
 // 안내 문구는 "무엇을 해 보라"까지만 말한다. 관찰 결과를 대신 말해주면 학생이 스스로 알아낼
 // 것이 없어진다(2026-08-06 사용자 피드백으로 결과 설명을 전부 걷어냈다).
@@ -42,9 +36,6 @@ function applyMode(mode) {
   document.getElementById('tab-scope').classList.toggle('selected', mode === 'scope')
   document.getElementById('tab-can').setAttribute('aria-selected', String(mode === 'can'))
   document.getElementById('tab-scope').setAttribute('aria-selected', String(mode === 'scope'))
-  // 검전기 모드에서는 물체 종류 대신 '검전기 상태'를 고른다
-  materialGroup.hidden = mode !== 'can'
-  prechargeGroup.hidden = mode !== 'scope'
   if (mode === 'can') resetCan(model)
   hintBar.textContent = HINTS[mode]
   syncChips()
@@ -80,22 +71,16 @@ function bindChips(selector, attr, apply) {
     })
   }
 }
-bindChips('#rod-buttons .chip', 'rod', (v) => setRodCharge(model, Number(v)))
-bindChips('#material-buttons .chip', 'material', (v) => {
-  setMaterial(model, v === 'insulator' ? INSULATOR : CONDUCTOR)
+// 막대 종류를 바꾸면 새 막대를 든 셈이라, 앞서 나눠준 전하도 함께 처음 상태로 되돌린다.
+bindChips('#rod-buttons .chip', 'rod', (v) => {
+  setRodCharge(model, Number(v))
   resetCan(model)
 })
-bindChips('#precharge-buttons .chip', 'precharge', (v) => setPreCharge(model, Number(v)))
 
 function syncChips() {
   for (const b of document.querySelectorAll('#rod-buttons .chip')) {
-    b.classList.toggle('selected', Number(b.dataset.rod) === model.rodCharge)
-  }
-  for (const b of document.querySelectorAll('#material-buttons .chip')) {
-    b.classList.toggle('selected', b.dataset.material === model.material)
-  }
-  for (const b of document.querySelectorAll('#precharge-buttons .chip')) {
-    b.classList.toggle('selected', Number(b.dataset.precharge) === model.preCharge)
+    // rodCharge는 부호가 붙은 **개수**라 부호끼리 견준다
+    b.classList.toggle('selected', Number(b.dataset.rod) === Math.sign(model.rodCharge))
   }
 }
 

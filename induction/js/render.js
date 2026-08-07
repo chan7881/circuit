@@ -4,7 +4,7 @@
 //    전기를 띠는지"는 전하 기호를 학생이 직접 보고 판단하게 둔다(2026-08-06 사용자 피드백).
 
 import {
-  CONDUCTOR,
+  ROD_FULL_CHARGES,
   CHARGE_PAIRS,
   CAN_W,
   CAN_H,
@@ -153,10 +153,13 @@ function drawRod(ctx, tipX, centerY, charge, orientation) {
   ctx.lineWidth = 3
   ctx.stroke()
 
-  // 막대에 고르게 박힌 전하 — 대전체(부도체)는 전하가 이동하지 않는다는 점도 같이 보인다
-  const n = 5
+  // 막대에 남아 있는 전하를 **개수 그대로** 그린다. 닿아서 물체에 나눠주면 그만큼 줄어드는데,
+  // 이걸 고정된 개수로 그려 두면 "전하가 복사된다"는 오개념을 심는다(2026-08-07 사용자 지적).
+  // 자리는 언제나 가득 찼을 때(ROD_FULL_CHARGES) 기준으로 잡아 두고, 남은 개수만 채운다 —
+  // 그래야 "여기 있던 게 빠져나갔구나"가 보인다.
+  const n = Math.min(ROD_FULL_CHARGES, Math.abs(charge))
   for (let i = 0; i < n; i++) {
-    const t = (i + 0.5) / n
+    const t = (i + 0.5) / ROD_FULL_CHARGES
     const cx = horizontal ? x + t * w : x + w / 2
     const cy = horizontal ? centerY : y + t * h
     if (charge > 0) drawPlus(ctx, cx, cy, 7)
@@ -263,10 +266,10 @@ function drawCanCharges(ctx, box, model, showCharges) {
 
     drawPlus(ctx, homeX, y - 10) // 양성자는 언제나 제자리
 
-    if (model.material === CONDUCTOR && i < shifted) {
+    if (i < shifted) {
       drawMinus(ctx, pileX, pileSpots[i])
     } else {
-      drawMinus(ctx, homeX, y + 10) // 아직 안 움직인 전자 / 부도체는 원자에 묶여 제자리
+      drawMinus(ctx, homeX, y + 10) // 아직 안 움직인 전자
     }
   }
 
@@ -299,15 +302,14 @@ export function drawCanMode(ctx, cssWidth, cssHeight, model, state) {
   drawTable(ctx)
 
   const box = canBox(model)
-  const isConductor = model.material === CONDUCTOR
-  drawCan(ctx, box, isConductor, model.can.x)
+  drawCan(ctx, box, true, model.can.x)
 
   ctx.save()
-  ctx.fillStyle = isConductor ? '#475569' : '#a16207'
+  ctx.fillStyle = '#475569'
   ctx.font = 'bold 14px system-ui, sans-serif'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'top'
-  ctx.fillText(isConductor ? '금속 캔' : '플라스틱 컵', box.x + box.w / 2, CAN_TOP + CAN_H + 24)
+  ctx.fillText('금속 캔', box.x + box.w / 2, CAN_TOP + CAN_H + 24)
   ctx.restore()
 
   drawCanCharges(ctx, box, model, state.showCharges)

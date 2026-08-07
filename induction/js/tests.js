@@ -1,9 +1,8 @@
 // model.js 검증. test.html에서 모듈로 로드되어 화면·콘솔에 PASS/FAIL을 출력한다.
 
 import {
-  CONDUCTOR,
-  INSULATOR,
   CHARGE_PAIRS,
+  ROD_FULL_CHARGES,
   FAR_GAP,
   TRACK,
   CAN_W,
@@ -12,8 +11,8 @@ import {
   createModel,
   setRodCharge,
   setRodTipX,
-  setMaterial,
   setPreCharge,
+  rodStrength,
   setMode,
   canLeft,
   canRight,
@@ -104,19 +103,48 @@ function run(m, seconds) {
   eq(electronDrift(m), -1, '(+)막대면 전자가 가까운 쪽으로 끌려온다')
 })()
 
-// 6) 부도체에서는 유도가 일어나지 않는다
-;(function insulatorNoInduction() {
-  const m = createModel()
-  setMaterial(m, INSULATOR)
-  placeRod(m, 5)
-  eq(shiftedElectrons(m), 0, '부도체는 자유 전자가 없어 전하가 몰리지 않는다')
-  eq(forceOnObject(m), NONE, '부도체에는 힘을 표시하지 않는다')
+// 6) **전하 보존** — 닿아서 옮겨갈 때 막대가 가진 전하도 그만큼 줄어든다.
+//    전하는 새로 생기는 게 아니라 옮겨 다닐 뿐이다. 예전에는 막대 전하를 ±1 부호로만 들고
+//    있어서 캔이 대전돼도 막대는 그대로였다 — 학생에게 "전하가 복사된다"고 가르치는 셈이었다.
+;(function contactConservesCharge() {
+  for (const rod of [1, -1]) {
+    const m = createModel()
+    setRodCharge(m, rod)
+    const before = m.rodCharge + totalCharge(m)
+    eq(Math.abs(m.rodCharge), ROD_FULL_CHARGES, `막대는 처음에 ${ROD_FULL_CHARGES}개를 가지고 있다`)
+
+    placeRod(m, 40)
+    run(m, 4) // 끌려와 닿을 때까지
+
+    const after = m.rodCharge + totalCharge(m)
+    eq(after, before, `막대 ${rod > 0 ? '(+)' : '(−)'}: 막대와 캔의 전하 합이 그대로다(전하 보존)`)
+    assert(
+      Math.abs(m.rodCharge) < ROD_FULL_CHARGES,
+      `막대가 나눠준 만큼 줄어든다 (${ROD_FULL_CHARGES} → ${Math.abs(m.rodCharge)})`,
+    )
+    eq(Math.sign(m.rodCharge), rod, '막대의 전기 종류는 그대로다(약해질 뿐)')
+    eq(Math.abs(m.rodCharge) + Math.abs(totalCharge(m)), ROD_FULL_CHARGES, '개수로 봐도 딱 맞는다')
+  }
+})()
+
+// 6-2) 막대가 약해지면 유도도 약해진다 — 전하를 나눠준 결과가 다음 관찰에 이어진다
+;(function weakerRodInducesLess() {
+  const strong = createModel()
+  placeRod(strong, 30)
+  const before = shiftedElectrons(strong)
+
+  const weak = createModel()
+  weak.rodCharge = -CONTACT_AMOUNT // 이미 절반쯤 나눠준 막대
+  placeRod(weak, 30)
+  const after = shiftedElectrons(weak)
+
+  assert(rodStrength(weak) < rodStrength(strong), '나눠준 막대는 세기가 약하다')
+  assert(after < before, `약해진 막대는 전자를 덜 몰아낸다 (${before} → ${after})`)
 })()
 
 // 7) 캔이 실제로 굴러온다 — 끌리면 막대 쪽으로 가까워져야 한다
 ;(function canRollsToward() {
   const m = createModel()
-  setMaterial(m, CONDUCTOR)
   placeRod(m, 90)
   const before = gap(m)
   run(m, 1)
@@ -137,15 +165,6 @@ function run(m, seconds) {
   const afterTouch = gap(m)
   run(m, 1)
   assert(gap(m) > afterTouch, `밀려나서 멀어진다 (${afterTouch.toFixed(1)} → ${gap(m).toFixed(1)})`)
-})()
-
-// 9) 부도체는 닿아도 대전되지 않는다
-;(function insulatorNoContactCharge() {
-  const m = createModel()
-  setMaterial(m, INSULATOR)
-  setRodTipX(m, canLeft(m) + 5) // 억지로 겹치게
-  run(m, 0.5)
-  eq(m.contactCharge, 0, '부도체는 닿아도 전하가 옮겨오지 않는다')
 })()
 
 // 10) 캔은 실험대 밖으로 나가지 않는다 (양쪽 벽)
@@ -175,14 +194,11 @@ function run(m, seconds) {
 // 12) 물리가 폭발하지 않는다
 ;(function stability() {
   for (const rod of [1, -1]) {
-    for (const mat of [CONDUCTOR, INSULATOR]) {
-      const m = createModel()
-      setRodCharge(m, rod)
-      setMaterial(m, mat)
-      placeRod(m, 1)
-      run(m, 15)
-      assert(Number.isFinite(m.can.x) && Number.isFinite(m.can.v), `막대 ${rod}, ${mat} 조합에서 값이 발산하지 않는다`)
-    }
+    const m = createModel()
+    setRodCharge(m, rod)
+    placeRod(m, 1)
+    run(m, 15)
+    assert(Number.isFinite(m.can.x) && Number.isFinite(m.can.v), `막대 ${rod}에서 값이 발산하지 않는다`)
   }
 })()
 
@@ -230,6 +246,26 @@ function run(m, seconds) {
   setRodTipX(m, 44)
   eq(shiftedElectrons(m), 0, '막대를 치우면 유도는 사라진다')
   assert(foilSpread(m) > 0, `그래도 금속박은 벌어진 채 남는다 (벌어짐=${foilSpread(m).toFixed(2)})`)
+})()
+
+// 14-3) 검전기도 전하 보존이 지켜진다 — 검전기가 얻은 만큼 막대가 잃는다
+;(function scopeConservesCharge() {
+  for (const rod of [1, -1]) {
+    const m = createModel()
+    setMode(m, 'scope')
+    setRodCharge(m, rod)
+    const before = m.rodCharge + m.preCharge
+
+    setRodTipX(m, SCOPE_PLATE_LEFT)
+    eq(stepScope(m), true, `막대 ${rod > 0 ? '(+)' : '(−)'}: 닿으면 접촉 대전이 일어난다`)
+
+    eq(m.rodCharge + m.preCharge, before, '막대와 검전기의 전하 합이 그대로다(전하 보존)')
+    assert(
+      Math.abs(m.rodCharge) < ROD_FULL_CHARGES,
+      `막대가 나눠준 만큼 줄어든다 (${ROD_FULL_CHARGES} → ${Math.abs(m.rodCharge)})`,
+    )
+    eq(Math.sign(m.preCharge), rod, '검전기는 막대와 같은 전기를 띤다')
+  }
 })()
 
 // 15) 중성 검전기 — 가까이 하면 금속박이 벌어진다
@@ -288,7 +324,7 @@ function run(m, seconds) {
   assert(m.contactCharge !== 0, '(사전 조건) 접촉으로 대전된 상태')
   setMode(m, 'scope')
   eq(m.contactCharge, 0, '모드를 바꾸면 대전 상태가 초기화된다')
-  eq(m.material, CONDUCTOR, '검전기 모드는 항상 도체다')
+  eq(Math.abs(m.rodCharge), ROD_FULL_CHARGES, '모드를 바꾸면 막대도 가득 찬 상태로 돌아온다')
   setMode(m, 'can')
   eq(m.preCharge, 0, '캔 모드로 돌아오면 검전기 사전 대전은 사라진다')
 })()

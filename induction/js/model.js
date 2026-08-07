@@ -3,20 +3,23 @@
 // 이 시뮬레이터가 반드시 지켜야 하는 교육적 사실:
 //   1) 유도에서는 전하가 **새로 생기지 않는다** — 물체 안에서 위치만 옮겨간다.
 //      그래서 (접촉하지 않는 한) 금속 전체의 알짜 전하는 언제나 0이다.
-//   2) 옮겨 다니는 것은 **자유 전자뿐**이다. 그래서 **도체에서만** 유도가 일어난다.
+//   2) 옮겨 다니는 것은 **자유 전자뿐**이다.
 //   3) 대전체가 (+)든 (−)든, 가까운 쪽은 **항상 반대 전하**가 되므로 **항상 끌린다**.
 //      (이게 학생들이 가장 많이 놓치는 지점이라, 부호를 바꿔가며 확인하게 만든다.)
 //   4) 그런데 **닿아버리면** 이야기가 달라진다 — 전하가 실제로 옮겨와 캔이 막대와 **같은**
 //      전기를 띠고, 그때부터는 밀려난다. 유도와 접촉 대전을 가르는 결정적 장면이다.
+//   5) 닿아서 옮겨갈 때 **대전체가 가진 전하도 그만큼 줄어든다**. 전하는 어디서 생기는 게
+//      아니라 옮겨 다닐 뿐이기 때문이다. 대전체의 전하 개수를 고정해 두면 "전하가 복사된다"는
+//      오개념을 심는다(2026-08-07 사용자 지적) — 그래서 막대 전하도 개수로 들고 다닌다.
 //
 // ⚠️ 관찰 결과를 말로 풀어주는 함수는 두지 않는다. 무엇이 일어났는지는 학생이 화면을 보고
 //    스스로 말해야 한다(2026-08-06 사용자 피드백 — 설명 문구 일괄 삭제).
 
-export const CONDUCTOR = 'conductor'
-export const INSULATOR = 'insulator'
-
 /** 물체 안에 그려 넣을 전하 쌍의 개수(=자유 전자 후보의 개수). */
 export const CHARGE_PAIRS = 6
+
+/** 대전체가 처음에 가지고 있는 전하의 개수. 닿아서 나눠주면 이보다 줄어든다. */
+export const ROD_FULL_CHARGES = 6
 
 /** 이 거리(논리 px)보다 멀면 유도가 일어나지 않는다고 본다. */
 export const FAR_GAP = 220
@@ -43,14 +46,16 @@ export function createModel() {
   return {
     /** 'can'(금속 캔) | 'scope'(검전기) — 막대와 물체 사이 거리를 어디서 재는지가 달라진다 */
     mode: 'can',
-    /** 대전체(막대)의 전하: +1 또는 −1 */
-    rodCharge: -1,
+    /**
+     * 대전체(막대)가 지금 가진 전하 — **부호가 붙은 개수**다(예: −6).
+     * 부호는 (+)/(−) 전기, 크기는 화면에 그려지는 전하 표시의 개수.
+     * 닿아서 물체에 나눠주면 그만큼 **줄어든다**(전하 보존).
+     */
+    rodCharge: -ROD_FULL_CHARGES,
     /** 막대 **오른쪽 끝**의 x 좌표. 학생이 드래그해서 옮긴다. */
     rodTipX: 44,
     /** 캔의 중심 x와 속도 — 실제로 굴러다닌다 */
     can: { x: 420, v: 0 },
-    /** 물체 종류 — 도체(금속)에서만 자유 전자가 이동한다 */
-    material: CONDUCTOR,
     /** 막대에 닿아서 실제로 옮겨온 전하. 0이 아니면 더 이상 중성이 아니다. */
     contactCharge: 0,
     /** 검전기 모드에서 쓰는, 미리 대전시켜 둔 전하(0이면 중성 상태의 검전기) */
@@ -58,15 +63,15 @@ export function createModel() {
   }
 }
 
+/** 막대의 전기 종류를 정한다. 종류를 바꾸면 새 막대를 든 셈이라 전하량도 가득 찬 상태가 된다. */
 export function setRodCharge(model, charge) {
-  model.rodCharge = charge >= 0 ? 1 : -1
+  model.rodCharge = (charge >= 0 ? 1 : -1) * ROD_FULL_CHARGES
   return model
 }
 
-export function setMaterial(model, material) {
-  model.material = material === INSULATOR ? INSULATOR : CONDUCTOR
-  model.contactCharge = 0 // 물체를 바꾸면 대전 상태도 처음부터
-  return model
+/** 막대에 남은 전하의 비율(0~1). 나눠주고 나면 유도도 그만큼 약해진다. */
+export function rodStrength(model) {
+  return Math.min(1, Math.abs(model.rodCharge) / ROD_FULL_CHARGES)
 }
 
 export function setPreCharge(model, charge) {
@@ -105,11 +110,11 @@ export function gap(model) {
 export function setMode(model, mode) {
   model.mode = mode === 'scope' ? 'scope' : 'can'
   // 모드를 바꾸면 막대를 멀리 물리고 대전 상태도 되돌린다 — 앞 모드의 결과가 섞이면
-  // 학생이 무엇 때문에 그렇게 됐는지 알 수 없다.
+  // 학생이 무엇 때문에 그렇게 됐는지 알 수 없다. 막대의 전하량도 가득 찬 상태로 되돌린다.
   model.rodTipX = 44
   model.contactCharge = 0
-  if (model.mode === 'scope') model.material = CONDUCTOR
-  else model.preCharge = 0
+  model.preCharge = 0
+  model.rodCharge = Math.sign(model.rodCharge || -1) * ROD_FULL_CHARGES
   return model
 }
 
@@ -123,11 +128,10 @@ export function proximity(model) {
 
 /**
  * 유도로 한쪽에 몰린 전자의 개수(0 ~ CHARGE_PAIRS).
- * 부도체는 자유 전자가 없으므로 항상 0이다 — 이 한 줄이 도체/부도체 비교의 전부다.
+ * 가까울수록, 그리고 **막대에 남은 전하가 많을수록** 많이 몰린다.
  */
 export function shiftedElectrons(model) {
-  if (model.material !== CONDUCTOR) return 0
-  return Math.round(proximity(model) * CHARGE_PAIRS)
+  return Math.round(proximity(model) * rodStrength(model) * CHARGE_PAIRS)
 }
 
 /**
@@ -169,8 +173,24 @@ export function forceOnObject(model) {
   if (model.contactCharge !== 0) {
     return Math.sign(model.contactCharge) === Math.sign(model.rodCharge) ? REPEL : ATTRACT
   }
-  if (model.material !== CONDUCTOR) return NONE
   return ATTRACT
+}
+
+/**
+ * 막대가 물체에 닿았을 때 옮겨가는 전하를 계산한다 — **전하 보존**이 지켜지는 유일한 지점이라
+ * 캔과 검전기가 이 함수 하나를 같이 쓴다. 옮겨간 만큼 막대에서 정확히 빠져나간다.
+ *
+ * (−)막대면 전자가 막대 → 물체로 가서 둘 다 (−)가 되고, (+)막대면 전자가 물체 → 막대로
+ * 가서 둘 다 (+)가 된다. 어느 쪽이든 **물체는 막대와 같은 전기**를 띠고, 막대는 그만큼 약해진다.
+ */
+function transferOnContact(model) {
+  const sign = Math.sign(model.rodCharge)
+  if (sign === 0) return 0
+  // 막대에 남은 것보다 많이 줄 수는 없다
+  const amount = Math.min(CONTACT_AMOUNT, Math.abs(model.rodCharge))
+  if (amount <= 0) return 0
+  model.rodCharge -= sign * amount
+  return sign * amount
 }
 
 // ── 캔의 움직임 ───────────────────────────────────────────────────────
@@ -204,15 +224,17 @@ export function stepCan(model, dt) {
   model.can.v = Math.max(-CAN_MAX_SPEED, Math.min(CAN_MAX_SPEED, model.can.v))
   model.can.x += model.can.v * step
 
-  // 접촉 — 캔 왼쪽 면이 막대 끝에 닿으면 전하가 실제로 옮겨온다.
-  // 도체일 때만 일어난다(부도체는 표면 전하가 흐르지 않아 밀려나지 않는다).
+  // 접촉 — 캔 왼쪽 면이 막대 끝에 닿으면 전하가 실제로 옮겨온다(막대에서는 그만큼 빠진다).
   let touched = false
   if (gap(model) <= 0) {
     model.can.x = model.rodTipX + CAN_W / 2 // 파고들지 못하게 밀어낸다
     if (model.can.v < 0) model.can.v = 0
-    if (model.material === CONDUCTOR && model.contactCharge === 0) {
-      model.contactCharge = Math.sign(model.rodCharge) * CONTACT_AMOUNT
-      touched = true
+    if (model.contactCharge === 0) {
+      const moved = transferOnContact(model)
+      if (moved !== 0) {
+        model.contactCharge = moved
+        touched = true
+      }
     }
   }
 
@@ -232,6 +254,8 @@ export function resetCan(model) {
   model.can.v = 0
   model.contactCharge = 0
   model.rodTipX = 44
+  // 막대도 새것으로 — 나눠준 전하를 되돌리지 않으면 몇 번 하다가 막대가 바닥나 버린다.
+  model.rodCharge = Math.sign(model.rodCharge || -1) * ROD_FULL_CHARGES
   return model
 }
 
@@ -249,7 +273,9 @@ export function stepScope(model) {
   if (model.mode !== 'scope') return false
   if (gap(model) > 0) return false
   if (model.preCharge !== 0) return false
-  model.preCharge = Math.sign(model.rodCharge) * CONTACT_AMOUNT
+  const moved = transferOnContact(model)
+  if (moved === 0) return false
+  model.preCharge = moved
   return true
 }
 
