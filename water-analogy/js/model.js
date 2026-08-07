@@ -42,8 +42,13 @@ export function createModel() {
   }
 }
 
+/**
+ * 펌프 세기(=전지 전압)를 0 ~ MAX_PUMP 범위로 정한다. 슬라이드바로 조절하므로 **정수로
+ * 반올림하지 않는다** — 중간값도 그대로 받아 물살(=전류)이 이어지듯 변한다.
+ */
 export function setPump(model, value) {
-  model.pump = Math.max(0, Math.min(MAX_PUMP, Math.round(value)))
+  const v = Number(value)
+  model.pump = Number.isFinite(v) ? Math.max(0, Math.min(MAX_PUMP, v)) : 0
   return model
 }
 

@@ -19,7 +19,14 @@
 
 import * as THREE from 'three'
 import { OrbitControls } from '../../vendor/three/OrbitControls.js'
-import { currentLevel, commutatorPhase, reducedMotorAngle, motorTorque } from './model.js'
+import {
+  currentLevel,
+  commutatorPhase,
+  reducedMotorAngle,
+  motorTorque,
+  isCommutatorBreak,
+  COMMUTATOR_BREAK_HALF_ANGLE,
+} from './model.js'
 
 const N_COLOR = '#e11d48'
 const S_COLOR = '#2563eb'
@@ -291,49 +298,87 @@ export function createScene(canvas) {
   }
 
   // 정류자(반으로 쪼갠 고리) + 브러시 — 반 바퀴마다 결선이 뒤집히는 것을 눈에 보이게 한다
+  // 정류자(整流子) — **반으로 쪼갠 고리** 두 조각. 각 조각이 코일의 한쪽 끝에 이어져 있고,
+  // 고리는 코일과 함께 돈다. 양옆에 고정된 브러시가 고리에 닿아 전지의 전류를 넘겨준다.
+  //
+  // 고리의 **틈**은 브러시 자리(양옆, ±x)에 왔을 때 회로가 끊기도록 위·아래(±y)에 둔다.
+  // 고리가 회전각 θ만큼 돌면 틈은 θ±π/2에 오므로, θ가 π/2·3π/2(죽은점)일 때 정확히
+  // 브러시에 닿는다 — model.js의 isCommutatorBreak()가 보는 각도와 같은 자리다.
   const COMM_Z = 0.72
+  const COMM_R = 0.13
+  const COMM_TUBE = 0.035
+  const BRUSH_X = COMM_R + COMM_TUBE + 0.015
   const commutator = new THREE.Group()
   commutator.position.set(0, MOTOR_CENTER_Y, COMM_Z)
   motorScene.add(commutator)
-  for (const [i, color] of [[0, '#dc2626'], [1, '#111827']]) {
-    const half = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.11, 0.11, 0.14, 20, 1, false, i * Math.PI + 0.08, Math.PI - 0.16),
-      new THREE.MeshStandardMaterial({ color }),
-    )
-    half.rotation.x = Math.PI / 2
-    commutator.add(half)
-  }
-  for (const sy of [1, -1]) {
-    const brush = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.1, 0.09), new THREE.MeshStandardMaterial({ color: '#475569' }))
-    brush.position.set(0, sy * 0.16, COMM_Z)
-    motorScene.add(brush)
+  {
+    const gap = COMMUTATOR_BREAK_HALF_ANGLE // 그림의 틈 = 모델이 전류를 끊는 구간(같은 값)
+    const arc = Math.PI - gap * 2
+    // 토러스는 +x에서 시작해 반시계로 감긴다. 첫 조각은 +x쪽 절반, 둘째 조각은 −x쪽 절반.
+    for (const startRot of [-(Math.PI / 2 - gap), Math.PI / 2 + gap]) {
+      const half = new THREE.Mesh(
+        new THREE.TorusGeometry(COMM_R, COMM_TUBE, 10, 24, arc),
+        new THREE.MeshStandardMaterial({ color: COPPER, metalness: 0.4, roughness: 0.4 }),
+      )
+      half.rotation.z = startRot
+      commutator.add(half)
+    }
   }
 
-  // 전지 — 빨강(+)·검정(−) 단자. 브러시까지 도선으로 이어 회로가 닫힌 것을 보인다.
-  const BATT_Y = 0.12
-  const BATT_Z = 1.32
+  // 브러시 — 고리 양옆에 고정된 금속 판(사진의 회색 판). 고리와 함께 돌지 않는다.
+  const brushMat = new THREE.MeshStandardMaterial({ color: '#64748b', metalness: 0.5, roughness: 0.5 })
+  for (const sx of [-1, 1]) {
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.2, 0.16), brushMat)
+    plate.position.set(sx * (BRUSH_X + 0.012), MOTOR_CENTER_Y, COMM_Z)
+    motorScene.add(plate)
+    const post = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.018, 0.018, MOTOR_CENTER_Y - 0.1, 10),
+      brushMat,
+    )
+    post.position.set(sx * (BRUSH_X + 0.012), (MOTOR_CENTER_Y - 0.1) / 2, COMM_Z)
+    motorScene.add(post)
+  }
+
+  // 전지와 회로 — 사진처럼 앞쪽 낮은 자리에 납작하게 둬서 코일 관찰을 가리지 않게 한다.
+  // 전지에서 나온 전류는 도선 → 브러시 → 정류자 → 코일로 흐른다. **바깥 회로(도선)의 전류
+  // 방향은 늘 그대로**이고, 정류자가 코일 쪽 연결만 반 바퀴마다 갈아끼운다 — 그래서 코일
+  // 속 전류만 뒤집힌다. 이 대비가 직류 전동기의 핵심이라 둘을 한 화면에서 같이 보여 준다.
+  const BATT_Y = 0.13
+  const BATT_Z = 1.18
+  const BATT_HALF = 0.24
+  const circuit = { wires: [], terminals: [] }
   {
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.22, 0.28), new THREE.MeshStandardMaterial({ color: '#f8fafc' }))
+    const body = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.1, 0.1, BATT_HALF * 2, 18),
+      new THREE.MeshStandardMaterial({ color: '#1f2937' }),
+    )
+    body.rotation.z = Math.PI / 2
     body.position.set(0, BATT_Y, BATT_Z)
     motorScene.add(body)
-    for (const [sx, color, brushY] of [[-1, '#dc2626', 0.16], [1, '#111827', -0.16]]) {
-      const term = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.03, 0.03, 0.09, 10),
-        new THREE.MeshStandardMaterial({ color }),
+
+    for (const sx of [-1, 1]) {
+      // 전지의 양 끝(+ 또는 −) — model.direction에 따라 색이 바뀐다
+      const cap = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.105, 0.105, 0.1, 18),
+        new THREE.MeshStandardMaterial({ color: '#dc2626' }),
       )
-      term.position.set(sx * 0.24, BATT_Y + 0.15, BATT_Z)
-      motorScene.add(term)
-      // 단자 → 브러시 도선
-      const from = new THREE.Vector3(sx * 0.24, BATT_Y + 0.19, BATT_Z)
-      const to = new THREE.Vector3(0, MOTOR_CENTER_Y + brushY, COMM_Z)
-      const mid = from.clone().add(to).multiplyScalar(0.5)
+      cap.rotation.z = Math.PI / 2
+      cap.position.set(sx * BATT_HALF, BATT_Y, BATT_Z)
+      motorScene.add(cap)
+
+      // 전지 끝 → 같은 쪽 브러시로 잇는 도선
+      const from = new THREE.Vector3(sx * (BATT_HALF + 0.06), BATT_Y, BATT_Z)
+      const to = new THREE.Vector3(sx * (BRUSH_X + 0.02), MOTOR_CENTER_Y - 0.06, COMM_Z)
       const wire = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.014, 0.014, from.distanceTo(to), 8),
-        new THREE.MeshStandardMaterial({ color }),
+        new THREE.CylinderGeometry(0.018, 0.018, from.distanceTo(to), 8),
+        new THREE.MeshStandardMaterial({ color: '#dc2626' }),
       )
-      wire.position.copy(mid)
+      wire.position.copy(from.clone().add(to).multiplyScalar(0.5))
       wire.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), to.clone().sub(from).normalize())
       motorScene.add(wire)
+
+      circuit.terminals.push(cap)
+      circuit.wires.push({ mesh: wire, from, to, sx })
     }
   }
 
@@ -391,6 +436,9 @@ export function createScene(canvas) {
     motorFb: makeArrow(FORCE_COLOR, 0.036),
     motorTa: makeArrow(TORQUE_COLOR),
     motorTb: makeArrow(TORQUE_COLOR),
+    // 바깥 회로(전지 ↔ 브러시) 도선에 흐르는 전류 — 코일 속과 달리 방향이 안 바뀐다
+    circuitA: makeArrow(CURRENT_COLOR, 0.026),
+    circuitB: makeArrow(CURRENT_COLOR, 0.026),
   }
 
   function placeArrow(arrow, origin, dir, length) {
@@ -469,6 +517,21 @@ export function createScene(canvas) {
       // 정류자도 코일과 함께 돈다 — 브러시에 닿는 조각이 반 바퀴마다 바뀐다
       commutator.rotation.z = model.motorAngle
 
+      // 전지의 +/− 와 도선 색. 전류 방향 버튼을 누르면 전지가 뒤집힌 것처럼 바뀐다.
+      // 빨강 = 전류가 나오는 쪽(+), 파랑 = 전류가 들어가는 쪽(−).
+      const broken = isCommutatorBreak(model)
+      circuit.terminals.forEach((cap, i) => {
+        const isPlus = (i === 0) === model.direction > 0
+        cap.material.color.set(isPlus ? '#dc2626' : '#1d4ed8')
+      })
+      circuit.wires.forEach((w, i) => {
+        const isPlus = (i === 0) === model.direction > 0
+        // 정류자 틈이 브러시에 온 순간에는 회로가 끊겨 있다 — 도선을 회색으로 죽여서
+        // "지금은 전류가 흐르지 않는다"를 한눈에 보이게 한다.
+        const live = on && !broken
+        w.mesh.material.color.set(!live ? '#9ca3af' : isPlus ? '#dc2626' : '#1d4ed8')
+      })
+
       if (showHelper && on) {
         const center = new THREE.Vector3(0, MOTOR_CENTER_Y, 0)
         // B — 두 자석 사이를 가로지르는 자기장
@@ -490,8 +553,25 @@ export function createScene(canvas) {
         // 코일 두 변이 거의 위아래로 겹쳐 보이는 각도에서는 화살표가 서로 포개져 읽기
         // 어려워 숨긴다. 일시정지하고 어느 순간이든 관찰할 수 있어야 하므로, 자바실험실의
         // 기준(0.3)보다 낮춰 정말 겹치는 구간에서만 감춘다.
+        // 바깥 회로(전지 ↔ 브러시)의 전류 — 코일 속과 달리 **방향이 바뀌지 않는다**.
+        // 정류자가 끊겨 있는 동안에는 아예 안 흐르므로 화살표도 감춘다.
+        if (!broken) {
+          circuit.wires.forEach((w, i) => {
+            const isPlus = (i === 0) === model.direction > 0
+            // +단자에서는 브러시 쪽으로, −단자에서는 전지 쪽으로 흐른다
+            const from = isPlus ? w.from : w.to
+            const to = isPlus ? w.to : w.from
+            const dir = to.clone().sub(from)
+            const len = Math.min(0.42, dir.length() * 0.5)
+            const mid = from.clone().add(dir.clone().multiplyScalar(0.5)).addScaledVector(dir.clone().normalize(), -len / 2)
+            placeArrow(arrows[i === 0 ? 'circuitA' : 'circuitB'], mid, dir, len)
+          })
+        }
+
         const facing = Math.abs(Math.cos(reducedMotorAngle(model)))
-        if (facing > 0.15) {
+        // 전류가 끊긴 순간에는 전류도 힘도 없으므로 화살표를 그리지 않는다 — 그 "잠깐 끊김"이
+        // 바로 정류자가 방향을 갈아타는 순간이다.
+        if (facing > 0.15 && !broken) {
           // I — 두 변에 흐르는 전류는 서로 반대 방향(축 방향 ±z). 정류자가 반 바퀴마다 뒤집는다.
           // 코일 변과 같은 축에, 변보다 굵고 길게 그려 도선에 파묻히지 않게 한다.
           const iSign = model.direction * commutatorPhase(model)
@@ -524,8 +604,10 @@ export function createScene(canvas) {
     if (mode === 'motor') {
       // 전동기는 회전축(보는 사람 쪽 z축)을 비스듬히 봐야 한다 — 축에 너무 가까우면 축을
       // 따라 흐르는 전류 화살표가 앞뒤로 눌려 보이지 않고, 너무 옆이면 자석이 코일을 가린다.
-      camera.position.set(2.0, 1.9, 2.7)
-      controls.target.set(0, 0.95, 0)
+      // 자석·코일뿐 아니라 앞쪽의 전지·도선까지 한 화면에 들어와야 해서 조금 물러나
+      // 잡고, 바라보는 점도 앞쪽으로 당긴다.
+      camera.position.set(2.3, 2.1, 3.2)
+      controls.target.set(0, 0.72, 0.42)
     } else {
       // 그네는 위에 매달린 코일까지 들어와야 하니 조금 높고 멀리서. 가로(x)로 흐르는 전류와
       // 앞뒤(z)로 밀리는 힘을 둘 다 비스듬히 보려면 x와 z 어느 한쪽으로 치우치면 안 된다 —

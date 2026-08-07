@@ -9,7 +9,8 @@ const state = { time: 0, phase: 0, showMapping: false }
 const canvas = document.getElementById('board')
 const ctx = canvas.getContext('2d')
 const hintBar = document.getElementById('hint-bar')
-const pumpButtons = document.getElementById('pump-buttons')
+const pumpSlider = document.getElementById('pump-slider')
+const pumpValue = document.getElementById('pump-value')
 const pipeButtons = document.getElementById('pipe-buttons')
 const btnGate = document.getElementById('btn-gate')
 const btnMapping = document.getElementById('btn-mapping')
@@ -17,19 +18,14 @@ const btnMapping = document.getElementById('btn-mapping')
 // 안내 문구는 "무엇을 해 보라"까지만. 관찰 결과는 학생이 스스로 말해야 한다.
 hintBar.textContent = '펌프 세기와 관의 굵기를 바꿔 보고, 밸브를 잠가 보세요.'
 
-// --- 펌프 세기(=전지) ---
-for (let i = 0; i <= MAX_PUMP; i++) {
-  const btn = document.createElement('button')
-  btn.className = 'chip tap-target'
-  btn.dataset.pump = String(i)
-  btn.textContent = i === 0 ? '꺼짐' : '■'.repeat(i)
-  btn.setAttribute('aria-label', i === 0 ? '펌프 끄기' : `펌프 세기 ${i}단계`)
-  btn.addEventListener('click', () => {
-    setPump(model, i)
-    syncChips()
-  })
-  pumpButtons.appendChild(btn)
-}
+// --- 펌프 세기(=전지) 슬라이드바 ---
+// 끝까지 내리면(0) 펌프가 꺼져 물이 흐르지 않는다.
+pumpSlider.max = String(MAX_PUMP)
+pumpSlider.value = String(model.pump)
+pumpSlider.addEventListener('input', () => {
+  setPump(model, pumpSlider.value)
+  syncChips()
+})
 
 // --- 관 굵기(=저항) ---
 PIPE_LEVELS.forEach((level, i) => {
@@ -59,9 +55,8 @@ btnMapping.addEventListener('click', () => {
 })
 
 function syncChips() {
-  for (const b of pumpButtons.querySelectorAll('.chip')) {
-    b.classList.toggle('selected', Number(b.dataset.pump) === model.pump)
-  }
+  // 슬라이드바 값은 최댓값에 대한 비율(%)로 보여 준다 — 4.0 같은 숫자보다 읽기 쉽다.
+  pumpValue.textContent = `${Math.round((model.pump / MAX_PUMP) * 100)}%`
   for (const b of pipeButtons.querySelectorAll('.chip')) {
     b.classList.toggle('selected', Number(b.dataset.pipe) === model.pipe)
   }

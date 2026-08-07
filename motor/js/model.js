@@ -61,8 +61,13 @@ export function setMagnetPolarity(model, polarity) {
   return model
 }
 
+/**
+ * 전류 세기를 0 ~ MAX_CURRENT 범위로 정한다. 슬라이드바로 조절하므로 **정수로 반올림하지
+ * 않는다** — 중간값도 그대로 받아 힘의 크기가 이어지듯 변한다.
+ */
 export function setCurrent(model, value) {
-  model.current = Math.max(0, Math.min(MAX_CURRENT, Math.round(value)))
+  const v = Number(value)
+  model.current = Number.isFinite(v) ? Math.max(0, Math.min(MAX_CURRENT, v)) : 0
   return model
 }
 
@@ -147,8 +152,26 @@ export function reducedMotorAngle(model) {
   return a
 }
 
+/**
+ * 정류자의 **틈**이 브러시를 지나가는 순간인지. 이때는 회로가 잠깐 끊겨 전류가 흐르지 않고,
+ * 따라서 힘도 돌림힘도 0이다 — 그래도 이미 돌던 관성 때문에 그냥 지나쳐 계속 돈다.
+ *
+ * 틈은 코일이 **죽은점(코일 면이 자기장과 수직, 회전각 π/2·3π/2)** 을 지날 때 브러시에 오도록
+ * 맞춰져 있다. 실제 직류 전동기가 그렇게 만들어져 있다 — 어차피 돌림힘이 0이라 잃을 게 없는
+ * 순간에 전류를 갈아타야 회전이 끊기지 않기 때문이다.
+ */
+export const COMMUTATOR_BREAK_HALF_ANGLE = 0.18
+
+export function isCommutatorBreak(model) {
+  if (currentLevel(model) <= 0) return false
+  // 죽은점(π/2, 3π/2)까지 남은 각도 — 반 바퀴 주기라 π로 나눈 나머지로 본다.
+  const fromDeadPoint = Math.abs(Math.abs(reducedMotorAngle(model)) - Math.PI / 2)
+  return fromDeadPoint < COMMUTATOR_BREAK_HALF_ANGLE
+}
+
 /** 지금 회전각에서 코일이 받는 돌림힘(−1 ~ 1). 부호가 회전 방향을 정한다. */
 export function motorTorque(model) {
+  if (isCommutatorBreak(model)) return 0 // 전류가 끊긴 동안에는 힘이 없다
   return forceSign(model) * forceMagnitude(model) * Math.cos(reducedMotorAngle(model))
 }
 
@@ -166,11 +189,16 @@ export function resetMotor(model) {
 }
 
 /**
- * 지금 회전각에서 정류자가 어느 쪽 결선 상태인지(+1 | −1). 반 바퀴(π)마다 뒤집힌다 — 코일의
- * 두 변에 흐르는 실제 전류 방향은 이 값 때문에 계속 바뀌지만, 힘(=회전 방향)은 그대로 유지된다.
+ * 지금 회전각에서 정류자가 어느 쪽 결선 상태인지(+1 | −1). 코일의 두 변에 흐르는 실제 전류
+ * 방향은 이 값 때문에 반 바퀴마다 뒤집히지만, 그래서 오히려 힘(=회전 방향)은 그대로 유지된다.
+ *
+ * ⚠️ 뒤집히는 지점은 **죽은점(π/2·3π/2)** 이지, 돌림힘이 가장 큰 지점(0·π)이 아니다.
+ *    전류를 그대로 두면 돌림힘 부호가 뒤집히는 바로 그 순간에 전류를 갈아타야, 돌림힘이
+ *    한 바퀴 내내 같은 쪽으로 유지된다. (cos θ의 부호가 바뀌는 곳과 같은 자리다.)
  */
 export function commutatorPhase(model) {
-  return Math.floor(model.motorAngle / Math.PI) % 2 === 0 ? 1 : -1
+  const a = model.motorAngle
+  return a < Math.PI / 2 || a >= (3 * Math.PI) / 2 ? 1 : -1
 }
 
 /** 지금 모드에 맞는 물리를 한 스텝 진행한다. */

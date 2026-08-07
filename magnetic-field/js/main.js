@@ -16,7 +16,8 @@ const hintBar = document.getElementById('hint-bar')
 const btnSwitch = document.getElementById('btn-switch')
 const btnFieldLines = document.getElementById('btn-fieldlines')
 const directionButtons = document.getElementById('direction-buttons')
-const currentButtons = document.getElementById('current-buttons')
+const currentSlider = document.getElementById('current-slider')
+const currentValue = document.getElementById('current-value')
 
 // 안내 문구는 "무엇을 해 보라"까지만. 관찰 결과는 학생이 스스로 말해야 한다.
 const HINTS = {
@@ -24,19 +25,14 @@ const HINTS = {
   wire: '전류 방향과 세기를 바꾸며 나침반의 반응을 살펴보세요. (도선이 실험대를 수직으로 지나갑니다 · 손가락으로 시점을 돌릴 수 있어요)',
 }
 
-// --- 전류 세기 버튼 ---
-for (let i = 0; i <= MAX_CURRENT; i++) {
-  const btn = document.createElement('button')
-  btn.className = 'chip tap-target'
-  btn.dataset.current = String(i)
-  btn.textContent = i === 0 ? '0' : '■'.repeat(i)
-  btn.setAttribute('aria-label', `전류 세기 ${i}단계`)
-  btn.addEventListener('click', () => {
-    setCurrent(model, i)
-    syncChips()
-  })
-  currentButtons.appendChild(btn)
-}
+// --- 전류 세기 슬라이드바 ---
+// 끝까지 내리면(0) 전류가 흐르지 않는다. 'input'을 쓰므로 끄는 동안에도 실시간으로 반응한다.
+currentSlider.max = String(MAX_CURRENT)
+currentSlider.value = String(model.current)
+currentSlider.addEventListener('input', () => {
+  setCurrent(model, currentSlider.value)
+  syncChips()
+})
 
 // --- 모드 전환 ---
 function setModeUI(mode) {
@@ -76,9 +72,8 @@ function syncChips() {
   for (const btn of directionButtons.querySelectorAll('.chip')) {
     btn.classList.toggle('selected', Number(btn.dataset.dir) === model.direction)
   }
-  for (const btn of currentButtons.querySelectorAll('.chip')) {
-    btn.classList.toggle('selected', Number(btn.dataset.current) === model.current)
-  }
+  // 슬라이드바 값은 최댓값에 대한 비율(%)로 보여 준다 — 4.0 같은 숫자보다 읽기 쉽다.
+  currentValue.textContent = `${Math.round((model.current / MAX_CURRENT) * 100)}%`
 }
 
 // --- 크게 보기 (전체화면 우선, 막히면 새 탭) ---

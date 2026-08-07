@@ -17,6 +17,8 @@ import {
   stepMotor,
   resetMotor,
   commutatorPhase,
+  isCommutatorBreak,
+  COMMUTATOR_BREAK_HALF_ANGLE,
   reducedMotorAngle,
   motorTorque,
   MOTOR_MAX_SPEED,
@@ -247,16 +249,74 @@ function runFor(model, seconds, dt, stepFn) {
   }
 })()
 
-// 13) 정류자 위상 — 반 바퀴(π)마다 정확히 뒤집힌다
-;(function commutatorFlipsEveryHalfTurn() {
+// 13) 정류자 위상 — **죽은점(π/2·3π/2)** 에서 뒤집힌다(돌림힘이 최대인 0·π가 아니다)
+;(function commutatorFlipsAtDeadPoints() {
   const m = createModel()
-  eq(commutatorPhase(m), 1, '회전각 0에서는 위상 +1')
-  m.motorAngle = Math.PI * 0.999
-  eq(commutatorPhase(m), 1, 'π 직전까지는 위상 +1')
-  m.motorAngle = Math.PI * 1.001
-  eq(commutatorPhase(m), -1, 'π를 넘으면 위상 −1로 뒤집힌다')
-  m.motorAngle = Math.PI * 1.999
-  eq(commutatorPhase(m), -1, '2π 직전까지는 위상 −1')
+  m.motorAngle = 0
+  eq(commutatorPhase(m), 1, '회전각 0(돌림힘 최대)에서는 위상 +1')
+  m.motorAngle = Math.PI / 2 - 0.001
+  eq(commutatorPhase(m), 1, 'π/2 직전까지는 위상 +1')
+  m.motorAngle = Math.PI / 2 + 0.001
+  eq(commutatorPhase(m), -1, 'π/2(죽은점)를 넘으면 위상이 뒤집힌다')
+  m.motorAngle = Math.PI
+  eq(commutatorPhase(m), -1, 'π(돌림힘 최대)에서는 위상이 뒤집히지 않는다')
+  m.motorAngle = (3 * Math.PI) / 2 - 0.001
+  eq(commutatorPhase(m), -1, '3π/2 직전까지는 위상 −1')
+  m.motorAngle = (3 * Math.PI) / 2 + 0.001
+  eq(commutatorPhase(m), 1, '3π/2(죽은점)를 넘으면 다시 +1로 돌아온다')
+
+  // 위상은 "전류를 그대로 뒀을 때 돌림힘 부호"와 항상 같아야 한다 — 그래야 실제 돌림힘이
+  // 한 방향으로 유지된다.
+  for (let i = 0; i < 72; i++) {
+    m.motorAngle = (i / 72) * Math.PI * 2
+    const rawSign = Math.sign(Math.cos(m.motorAngle))
+    if (Math.abs(Math.cos(m.motorAngle)) > 1e-6) {
+      eq(commutatorPhase(m), rawSign, `회전각 ${m.motorAngle.toFixed(2)}에서 위상이 cos θ 부호와 일치`)
+    }
+  }
+})()
+
+// 13-1) 정류자 틈 — 죽은점 부근에서 전류가 잠깐 끊기고, 그동안 돌림힘도 0이다
+;(function commutatorBreak() {
+  const m = createModel()
+  setMode(m, 'motor')
+  setCurrent(m, MAX_CURRENT)
+
+  m.motorAngle = 0
+  assert(!isCommutatorBreak(m), '돌림힘이 최대인 지점에서는 전류가 끊기지 않는다')
+  eq(Math.abs(motorTorque(m)) > 0, true, '그때 돌림힘이 있다')
+
+  for (const dead of [Math.PI / 2, (3 * Math.PI) / 2]) {
+    m.motorAngle = dead
+    assert(isCommutatorBreak(m), `죽은점 ${dead.toFixed(2)}에서 전류가 끊긴다`)
+    eq(motorTorque(m), 0, `끊긴 동안에는 돌림힘이 0 (회전각 ${dead.toFixed(2)})`)
+
+    m.motorAngle = dead - COMMUTATOR_BREAK_HALF_ANGLE - 0.02
+    assert(!isCommutatorBreak(m), `죽은점 직전(틈 밖)에서는 전류가 흐른다`)
+  }
+
+  // 스위치가 꺼져 있으면 애초에 흐를 전류가 없으니 "끊김"도 아니다
+  setOn(m, false)
+  m.motorAngle = Math.PI / 2
+  assert(!isCommutatorBreak(m), '전류가 없으면 끊김 상태로 보지 않는다')
+})()
+
+// 13-2) 전류가 끊겨도 관성으로 죽은점을 지나 계속 돈다
+;(function coastsThroughBreak() {
+  const m = createModel()
+  setMode(m, 'motor')
+  setCurrent(m, MAX_CURRENT)
+  let turns = 0
+  let prev = m.motorAngle
+  let minSpeed = Infinity
+  for (let t = 0; t < 8; t += 1 / 60) {
+    stepMotor(m, 1 / 60)
+    if (t > 1) minSpeed = Math.min(minSpeed, m.motorSpeed)
+    if (m.motorAngle < prev) turns++
+    prev = m.motorAngle
+  }
+  assert(turns >= 3, `정류자 틈이 있어도 여러 바퀴를 돈다 (바퀴 수=${turns})`)
+  assert(minSpeed > 0, `틈을 지나는 동안에도 멈추거나 뒤로 돌지 않는다 (최저 각속도=${minSpeed.toFixed(2)})`)
 })()
 
 // 14) step()이 모드에 맞는 물리를 호출한다

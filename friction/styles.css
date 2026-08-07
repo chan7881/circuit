@@ -157,6 +157,61 @@ html, body {
 
 .tap-target { min-height: 44px; min-width: 44px; }
 
+/* --- 슬라이드바(세기 조절) ---
+   단계 버튼 대신 쓰는 연속 조절기. 손가락으로 잡기 쉬우려면 손잡이가 충분히 커야 해서
+   기본 모양 대신 직접 그린다(브라우저마다 기본 크기가 제각각이라 통일도 된다). */
+.slider-group { display: flex; align-items: center; gap: 8px; }
+.slider-group .ctrl-label { flex-shrink: 0; }
+
+input[type="range"].slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 130px;
+  height: 44px; /* 탭 타깃 확보 — 실제 트랙은 아래에서 얇게 그린다 */
+  background: transparent;
+  cursor: pointer;
+  touch-action: none; /* 캔버스와 마찬가지로 브라우저 제스처와 충돌 방지 */
+}
+input[type="range"].slider::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border);
+}
+input[type="range"].slider::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border);
+}
+input[type="range"].slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 26px;
+  height: 26px;
+  margin-top: -10px; /* 트랙 한가운데에 오도록 */
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--panel);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+input[type="range"].slider::-moz-range-thumb {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--panel);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+/* 슬라이드바 옆에 붙는 현재 값 표시 — 자리가 흔들리지 않게 폭을 고정한다 */
+.slider-value {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  min-width: 42px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 /* --- 납작한 임베드(학습지 iframe 등 높이 260px 안팎) --- */
 @media (max-height: 300px) {
   #topbar { padding: 2px 4px; }
@@ -166,6 +221,8 @@ html, body {
   .controls { padding: 4px 6px; gap: 4px 8px; }
   .chip, .primary-btn { min-height: 36px; font-size: 12px; padding: 0 10px; }
   .ctrl-label { display: none; }
+  input[type="range"].slider { height: 36px; width: 100px; }
+  .slider-value { font-size: 12px; min-width: 36px; }
 }
 
 @media (prefers-color-scheme: dark) {

@@ -42,8 +42,13 @@ export function setDirection(model, dir) {
   return model
 }
 
+/**
+ * 전류 세기를 0 ~ MAX_CURRENT 범위로 정한다. 슬라이드바로 조절하므로 **정수로 반올림하지
+ * 않는다** — 중간값도 그대로 받아 자기장 세기가 이어지듯 변한다.
+ */
 export function setCurrent(model, value) {
-  model.current = Math.max(0, Math.min(MAX_CURRENT, Math.round(value)))
+  const v = Number(value)
+  model.current = Number.isFinite(v) ? Math.max(0, Math.min(MAX_CURRENT, v)) : 0
   return model
 }
 

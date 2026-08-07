@@ -48,15 +48,21 @@
         <button class="chip tap-target" data-polarity="-1">오른쪽 N</button>
       </div>
     </div>
-    <div class="ctrl-group">
+    <div class="ctrl-group slider-group">
       <span class="ctrl-label">전류 세기</span>
-      <div class="btn-row" id="current-buttons"></div>
+      <input id="current-slider" class="slider" type="range" min="0" max="4" step="0.05" value="2"
+             aria-label="전류 세기" />
+      <span id="current-value" class="slider-value" role="status">50%</span>
     </div>
     <div class="ctrl-group">
       <button id="btn-helper" class="chip tap-target">오른손 법칙 보기</button>
     </div>
     <div class="ctrl-group" id="pause-group">
       <button id="btn-pause" class="chip tap-target" aria-pressed="false">일시정지</button>
+    </div>
+    <div class="ctrl-group" id="speed-group">
+      <span class="ctrl-label">재생 속도</span>
+      <div class="btn-row" id="speed-buttons"></div>
     </div>
   </nav>
 
