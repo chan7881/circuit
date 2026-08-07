@@ -6,7 +6,11 @@
 //
 // 장치 모양은 자바실험실의 「전자기력(전기 그네)」·「직류 전동기」 시뮬레이션을 참고해
 // 실제 실험 기구 배치를 따랐다(2026-08-07 사용자 피드백). 화살표 색도 같은 규약을 쓴다:
-//   전류 I = 검정 · 자기장 B = 초록 · 힘 F = 빨강 · 돌림힘 τ = 자홍
+//   전류 I = 검정 · 자기장 B = 초록 · 힘 F = 빨강
+//
+// 돌림힘(τ) 화살표는 두지 않는다 — 코일이 받는 힘 F를 이미 양쪽에 그리고 있어서, 그 두 힘이
+// 회전을 만든다는 것은 F만 봐도 읽힌다. τ까지 겹쳐 그리면 오히려 화면만 복잡해진다
+// (2026-08-07 사용자 피드백). 물리 계산에는 model.js의 motorTorque()가 그대로 쓰인다.
 //
 // 모드 A(전기 그네): 위 두 단자에 매단 **네모난 코일**의 아래쪽 가로 도선이 **말굽자석의
 //   위아래 극 사이 틈**을 지난다. 자기장은 위아래 극 사이라 **연직 방향**, 전류는 아래
@@ -23,7 +27,6 @@ import {
   currentLevel,
   commutatorPhase,
   reducedMotorAngle,
-  motorTorque,
   isCommutatorBreak,
   COMMUTATOR_BREAK_HALF_ANGLE,
 } from './model.js'
@@ -34,7 +37,6 @@ const COPPER = '#c2803a'
 const CURRENT_COLOR = 0x111827 // 전류 I — 검정
 const FIELD_COLOR = 0x00b050 // 자기장 B — 초록
 const FORCE_COLOR = 0xef4444 // 힘 F — 빨강
-const TORQUE_COLOR = 0xd946ef // 돌림힘 τ — 자홍
 
 // ── 공통 코일 치수 ──
 const COIL_HALF_W = 0.42 // 가로 반너비(두 세로변 사이 거리의 절반)
@@ -462,8 +464,6 @@ export function createScene(canvas) {
     motorIb: makeArrow(CURRENT_COLOR, CURRENT_SHAFT_R),
     motorFa: makeArrow(FORCE_COLOR, 0.036),
     motorFb: makeArrow(FORCE_COLOR, 0.036),
-    motorTa: makeArrow(TORQUE_COLOR),
-    motorTb: makeArrow(TORQUE_COLOR),
     // 바깥 회로(전지 ↔ 브러시) 도선에 흐르는 전류 — 코일 속과 달리 방향이 안 바뀐다
     circuitA: makeArrow(CURRENT_COLOR, 0.026),
     circuitB: makeArrow(CURRENT_COLOR, 0.026),
@@ -524,7 +524,8 @@ export function createScene(canvas) {
           COIL_HALF_W * 2.3,
         )
         // F — 전류(x)와 자기장(y)에 모두 수직인 방향(z). 세기는 전류에 비례.
-        placeArrow(arrows.swingF, wire, new THREE.Vector3(0, 0, model.direction * pol), 0.2 + 0.35 * level)
+        // 이 시뮬레이터에서 가장 중요한 화살표라 넉넉히 길게 그린다.
+        placeArrow(arrows.swingF, wire, new THREE.Vector3(0, 0, model.direction * pol), 0.4 + 0.7 * level)
       }
     } else {
       // ── 직류 전동기 ──
@@ -609,17 +610,11 @@ export function createScene(canvas) {
           placeArrow(arrows.motorIb, sideB.clone().add(new THREE.Vector3(0, 0, iSign * iLen / 2)), new THREE.Vector3(0, 0, -iSign), iLen)
 
           // F — I×B. 두 변의 전류가 반대라 힘도 서로 반대 → 이것이 회전을 만든다.
-          const fLen = 0.18 + 0.3 * level
+          // 이 시뮬레이터에서 가장 중요한 화살표라 넉넉히 길게 그린다.
+          const fLen = 0.36 + 0.6 * level
           const fSign = model.direction * pol * commutatorPhase(model)
           placeArrow(arrows.motorFa, sideA, new THREE.Vector3(0, fSign, 0), fLen)
           placeArrow(arrows.motorFb, sideB, new THREE.Vector3(0, -fSign, 0), fLen)
-
-          // τ — 돌림힘. 코일 면이 자기장과 나란할수록 커진다(τ ∝ cos θ).
-          const tLen = 0.1 + 0.4 * Math.abs(motorTorque(model))
-          const tangential = new THREE.Vector3(-Math.sin(a), Math.cos(a), 0)
-          const tSign = Math.sign(motorTorque(model)) || 1
-          placeArrow(arrows.motorTa, sideA, tangential.clone().multiplyScalar(tSign), tLen)
-          placeArrow(arrows.motorTb, sideB, tangential.clone().multiplyScalar(-tSign), tLen)
         }
       }
     }
