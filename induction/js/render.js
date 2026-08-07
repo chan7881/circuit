@@ -4,7 +4,8 @@
 //    전기를 띠는지"는 전하 기호를 학생이 직접 보고 판단하게 둔다(2026-08-06 사용자 피드백).
 
 import {
-  ROD_FULL_CHARGES,
+  ROD_PROTONS,
+  rodElectrons,
   CHARGE_PAIRS,
   CAN_W,
   CAN_H,
@@ -126,7 +127,7 @@ function drawTable(ctx) {
  *  - 검전기 모드(옆에서 본 시점): 막대를 손에 **가로로** 들고 금속판 높이로 가져간다
  *    → 화면에서 **가로**, 세로 위치는 금속판 한가운데.
  */
-function drawRod(ctx, tipX, centerY, charge, orientation) {
+function drawRod(ctx, tipX, centerY, charge, electrons, orientation) {
   const color = charge > 0 ? PLUS_COLOR : MINUS_COLOR
   const horizontal = orientation === 'horizontal'
   const w = horizontal ? ROD_H : ROD_W
@@ -153,17 +154,28 @@ function drawRod(ctx, tipX, centerY, charge, orientation) {
   ctx.lineWidth = 3
   ctx.stroke()
 
-  // 막대에 남아 있는 전하를 **개수 그대로** 그린다. 닿아서 물체에 나눠주면 그만큼 줄어드는데,
-  // 이걸 고정된 개수로 그려 두면 "전하가 복사된다"는 오개념을 심는다(2026-08-07 사용자 지적).
-  // 자리는 언제나 가득 찼을 때(ROD_FULL_CHARGES) 기준으로 잡아 두고, 남은 개수만 채운다 —
-  // 그래야 "여기 있던 게 빠져나갔구나"가 보인다.
-  const n = Math.min(ROD_FULL_CHARGES, Math.abs(charge))
-  for (let i = 0; i < n; i++) {
-    const t = (i + 0.5) / ROD_FULL_CHARGES
-    const cx = horizontal ? x + t * w : x + w / 2
-    const cy = horizontal ? centerY : y + t * h
-    if (charge > 0) drawPlus(ctx, cx, cy, 7)
-    else drawMinus(ctx, cx, cy, 7)
+  // 막대도 **물체와 똑같은 방식**으로 그린다 — 양성자는 늘 ROD_PROTONS개 그대로,
+  // 전자만 늘거나 줄어든다. 그래야 닿았을 때 양쪽 전자를 **세어 보면 합이 그대로**인 것이
+  // 눈에 보인다. 예전에는 알짜 전하만 (+)(−)로 그려서, (+)막대가 전자를 받아 오는데도
+  // 화면에는 (+) 개수가 줄어드는 것으로만 보여 전하 보존을 알기 어려웠다(2026-08-07 지적).
+  //
+  // 자리 잡기: 막대 **긴 쪽**으로 ROD_PROTONS칸, **짧은 쪽**으로 3줄(양성자 1줄 + 전자 2줄).
+  const nE = electrons
+  const LONG = ROD_PROTONS
+  const spotAt = (lane, idx) => {
+    const tLong = (idx + 0.5) / LONG
+    const tCross = (lane + 0.5) / 3
+    return horizontal
+      ? { cx: x + tLong * w, cy: y + tCross * h }
+      : { cx: x + tCross * w, cy: y + tLong * h }
+  }
+  for (let i = 0; i < ROD_PROTONS; i++) {
+    const p = spotAt(0, i)
+    drawPlus(ctx, p.cx, p.cy, 6)
+  }
+  for (let k = 0; k < nE; k++) {
+    const p = spotAt(1 + Math.floor(k / LONG), k % LONG)
+    drawMinus(ctx, p.cx, p.cy, 6)
   }
   ctx.restore()
 }
@@ -324,7 +336,7 @@ export function drawCanMode(ctx, cssWidth, cssHeight, model, state) {
   ctx.restore()
 
   drawCanCharges(ctx, box, model, state.showCharges)
-  drawRod(ctx, model.rodTipX, CAN_TOP + CAN_H / 2, model.rodCharge, 'vertical')
+  drawRod(ctx, model.rodTipX, CAN_TOP + CAN_H / 2, model.rodCharge, rodElectrons(model), 'vertical')
 
   ctx.restore()
 }
@@ -417,9 +429,11 @@ function drawScopeCharges(ctx, model, showCharges, spread) {
     if (rest < CHARGE_PAIRS) {
       drawMinus(ctx, homes[rest].x + 9, homes[rest].y)
     } else {
-      // 접촉으로 넘어와 원래보다 많아진 전자 — 금속박 끝쪽에 따로 붙인다
+      // 접촉으로 넘어와 원래보다 많아진 전자 — 금속박 끝쪽에 따로 붙인다.
+      // 유도로 이미 붙은 개수(nShifted)에 이어서 좌우를 번갈아 놓는다. 그냥 0부터 번갈으면
+      // 유도된 것과 같은 쪽에 몰려, 두 금속박이 같은 전하를 띠는데도 한쪽만 무거워 보인다.
       const extra = rest - CHARGE_PAIRS
-      const p = foilPoint(zones.foil.angle, 0.92, extra % 2 === 0 ? -1 : 1)
+      const p = foilPoint(zones.foil.angle, 0.92, (nShifted + extra) % 2 === 0 ? -1 : 1)
       drawMinus(ctx, p.x, p.y + Math.floor(extra / 2) * 15, 7)
     }
   }
@@ -490,7 +504,7 @@ export function drawScopeMode(ctx, cssWidth, cssHeight, model, state) {
   ctx.restore()
 
   drawScopeCharges(ctx, model, state.showCharges, spread)
-  drawRod(ctx, model.rodTipX, SCOPE_PLATE_Y + SCOPE_PLATE_H / 2, model.rodCharge, 'horizontal')
+  drawRod(ctx, model.rodTipX, SCOPE_PLATE_Y + SCOPE_PLATE_H / 2, model.rodCharge, rodElectrons(model), 'horizontal')
 
   ctx.restore()
 }

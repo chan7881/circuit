@@ -15,11 +15,22 @@
 // ⚠️ 관찰 결과를 말로 풀어주는 함수는 두지 않는다. 무엇이 일어났는지는 학생이 화면을 보고
 //    스스로 말해야 한다(2026-08-06 사용자 피드백 — 설명 문구 일괄 삭제).
 
-/** 물체 안에 그려 넣을 전하 쌍의 개수(=자유 전자 후보의 개수). */
-export const CHARGE_PAIRS = 6
+/**
+ * 물체(캔·검전기) 안의 양성자 개수 = 중성일 때의 전자 개수.
+ * 대전체도 같은 수의 양성자를 가진 것으로 그린다 — 그래야 **양쪽 전자를 세어서** 전하가
+ * 보존되는 것을 확인할 수 있다.
+ */
+export const CHARGE_PAIRS = 4
+export const ROD_PROTONS = CHARGE_PAIRS
 
-/** 대전체가 처음에 가지고 있는 전하의 개수. 닿아서 나눠주면 이보다 줄어든다. */
-export const ROD_FULL_CHARGES = 6
+/**
+ * 대전체가 처음에 가지고 있는 알짜 전하의 크기.
+ *
+ * ⚠️ 이 값은 **CHARGE_PAIRS와 같아야 한다.** 검전기 금속박이 벌어진 정도는
+ *    (가진 전하/CHARGE_PAIRS) + (남은 막대 세기)로 계산하는데, 둘이 같아야 닿는 순간
+ *    두 항의 합이 1로 이어져 금속박이 도로 오므라들지 않는다(2026-08-07에 고친 버그).
+ */
+export const ROD_FULL_CHARGES = CHARGE_PAIRS
 
 /** 이 거리(논리 px)보다 멀면 유도가 일어나지 않는다고 본다. */
 export const FAR_GAP = 220
@@ -33,11 +44,26 @@ export const TRACK = { left: 36, right: 604 }
 
 export const CAN_W = 120
 export const CAN_H = 150
-export const ROD_W = 26
+/** 막대 폭 — 양성자 한 줄과 전자 두 줄을 나란히 그려야 해서 넉넉해야 한다. */
+export const ROD_W = 46
 export const ROD_H = 150
 
-/** 접촉했을 때 막대에서 캔으로 옮겨오는 전하의 크기 */
-export const CONTACT_AMOUNT = 3
+/** 접촉했을 때 옮겨가는 전자의 개수 */
+export const CONTACT_AMOUNT = 2
+
+/**
+ * 대전체가 지금 가지고 있는 전자의 개수.
+ *
+ * 대전체도 양성자는 ROD_PROTONS개로 **늘 그대로**이고, 전자 수만 달라진다.
+ *   · (−)대전체 → 전자가 남아돈다 (양성자보다 많다)
+ *   · (+)대전체 → 전자가 모자란다 (양성자보다 적다)
+ * 이렇게 그려야 닿았을 때 **양쪽의 전자를 세어 보면 합이 그대로**인 것이 눈에 보인다.
+ * 예전에는 대전체에 알짜 전하만 (+)(−) 기호로 그려서, (+)대전체가 전자를 받아 오는데도
+ * 화면에는 (+) 개수가 줄어드는 것으로만 보여 전하 보존을 알기 어려웠다(2026-08-07 사용자 지적).
+ */
+export function rodElectrons(model) {
+  return ROD_PROTONS - model.rodCharge
+}
 
 /** 검전기 모드에서 금속판의 왼쪽 면 x — 캔과 달리 움직이지 않으므로 상수다. */
 export const SCOPE_PLATE_LEFT = 330
@@ -249,10 +275,16 @@ export function stepCan(model, dt) {
   return touched
 }
 
+/**
+ * 처음 상태로 되돌린다 — **두 모드 모두**.
+ * 검전기는 한 번 대전되면 막대를 치워도 그대로 남으므로, 캔만 되돌리면 앞 실험의 결과가
+ * 그대로 남아 다음 관찰을 망친다(2026-08-07 사용자 지적).
+ */
 export function resetCan(model) {
   model.can.x = 420
   model.can.v = 0
   model.contactCharge = 0
+  model.preCharge = 0
   model.rodTipX = 44
   // 막대도 새것으로 — 나눠준 전하를 되돌리지 않으면 몇 번 하다가 막대가 바닥나 버린다.
   model.rodCharge = Math.sign(model.rodCharge || -1) * ROD_FULL_CHARGES

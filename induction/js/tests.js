@@ -9,6 +9,8 @@ import {
   CONTACT_AMOUNT,
   SCOPE_PLATE_LEFT,
   createModel,
+  ROD_PROTONS,
+  rodElectrons,
   setRodCharge,
   setRodTipX,
   setPreCharge,
@@ -127,6 +129,32 @@ function run(m, seconds) {
   }
 })()
 
+// 6-1) **전자 개수로 세어도 보존된다** — 화면이 보여 주는 것과 같은 방식의 검증.
+//      알짜 전하만 맞는 게 아니라, 양쪽에 그려지는 **전자 개수의 합**이 그대로여야
+//      학생이 세어 보고 "전자가 옮겨갔을 뿐"이라고 확인할 수 있다.
+;(function electronCountConserved() {
+  for (const rod of [1, -1]) {
+    const m = createModel()
+    setRodCharge(m, rod)
+    // 물체(캔)의 전자 수 = CHARGE_PAIRS − 알짜 전하
+    const canElectrons = (mm) => CHARGE_PAIRS - mm.contactCharge
+    const before = rodElectrons(m) + canElectrons(m)
+
+    placeRod(m, 40)
+    run(m, 4)
+
+    eq(rodElectrons(m) + canElectrons(m), before, `막대 ${rod > 0 ? '(+)' : '(−)'}: 전자 개수의 합이 그대로다`)
+    // 옮겨간 방향도 맞아야 한다: (−)막대는 전자를 내주고, (+)막대는 전자를 받아 온다
+    if (rod < 0) {
+      assert(rodElectrons(m) < before - canElectrons(m) + 1, '(−)막대는 전자를 내준다')
+      assert(canElectrons(m) > CHARGE_PAIRS, '캔은 전자를 얻어 (−)를 띤다')
+    } else {
+      assert(canElectrons(m) < CHARGE_PAIRS, '캔은 전자를 잃어 (+)를 띤다')
+      assert(rodElectrons(m) > ROD_PROTONS - ROD_FULL_CHARGES, '(+)막대는 전자를 받아 온다')
+    }
+  }
+})()
+
 // 6-2) 막대가 약해지면 유도도 약해진다 — 전하를 나눠준 결과가 다음 관찰에 이어진다
 ;(function weakerRodInducesLess() {
   const strong = createModel()
@@ -202,7 +230,9 @@ function run(m, seconds) {
   }
 })()
 
-// 13) 초기화하면 처음 상태로 돌아온다
+// 13) 초기화하면 처음 상태로 돌아온다 — **검전기까지 함께**
+//     검전기는 한 번 대전되면 막대를 치워도 그대로 남으므로, 캔만 되돌리면 앞 실험 결과가
+//     남아 다음 관찰을 망친다.
 ;(function reset() {
   const m = createModel()
   placeRod(m, 20)
@@ -211,6 +241,16 @@ function run(m, seconds) {
   eq(m.contactCharge, 0, '초기화하면 대전 상태가 사라진다')
   eq(m.can.v, 0, '초기화하면 캔이 멈춘다')
   eq(totalCharge(m), 0, '초기화하면 다시 중성')
+
+  // 검전기를 대전시켜 둔 뒤에도 초기화가 먹혀야 한다
+  const s = createModel()
+  setMode(s, 'scope')
+  setRodTipX(s, SCOPE_PLATE_LEFT)
+  stepScope(s)
+  assert(s.preCharge !== 0, '(사전 조건) 검전기가 대전된 상태')
+  resetCan(s)
+  eq(s.preCharge, 0, '초기화하면 검전기 대전도 사라진다')
+  eq(Math.abs(s.rodCharge), ROD_FULL_CHARGES, '초기화하면 막대도 가득 찬 상태로 돌아온다')
 })()
 
 // ── 검전기 ────────────────────────────────────────────────────────────

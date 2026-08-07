@@ -71,7 +71,8 @@ function bindChips(selector, attr, apply) {
     })
   }
 }
-// 막대 종류를 바꾸면 새 막대를 든 셈이라, 앞서 나눠준 전하도 함께 처음 상태로 되돌린다.
+// 막대 종류를 바꾸면 새 막대를 든 셈이다 — **두 모드 모두** 처음 상태로 되돌린다.
+// (검전기는 한 번 대전되면 그대로 남아서, 안 되돌리면 앞 실험 결과가 섞인다.)
 bindChips('#rod-buttons .chip', 'rod', (v) => {
   setRodCharge(model, Number(v))
   resetCan(model)
