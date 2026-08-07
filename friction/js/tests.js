@@ -208,6 +208,35 @@ function run(h, seconds) {
   assert(inside, `퍽이 벽 안에 머문다 (x=${h.puck.x.toFixed(1)}, y=${h.puck.y.toFixed(1)})`)
 })()
 
+// 15b) 채로 퍽을 벽에 짓눌러도 벗어나지 않는다
+//      15번은 채를 구석에 세워만 두어서 이걸 못 잡았다. 학생은 실제로 퍽을 **쫓아가며**
+//      벽으로 밀어붙이는데, 그때 충돌 처리가 퍽을 벽 밖으로 밀어냈다(중심이 판 오른끝보다
+//      52만큼 밖까지 나갔다). 충돌이 벽 처리 **뒤에** 있어서 벽 약속을 깨뜨린 것.
+;(function puckPinnedAgainstWall() {
+  let worst = 0
+  let worstPos = ''
+  for (const [pc, dc] of [[1, -1], [1, 1], [-1, -1]]) {
+    const h = createHockeyModel()
+    setHockeyCharge(h, 'puck', pc)
+    setHockeyCharge(h, 'paddle', dc)
+    for (let i = 0; i < 2000; i++) {
+      movePaddle(h, h.puck.x - 5, h.puck.y, 0.016) // 채를 퍽에 딱 붙여 계속 따라다닌다
+      stepHockey(h, 1 / 60)
+      const over = Math.max(
+        FIELD.x + PUCK_R - h.puck.x,
+        h.puck.x - (FIELD.x + FIELD.w - PUCK_R),
+        FIELD.y + PUCK_R - h.puck.y,
+        h.puck.y - (FIELD.y + FIELD.h - PUCK_R),
+      )
+      if (over > worst) {
+        worst = over
+        worstPos = `(${h.puck.x.toFixed(1)}, ${h.puck.y.toFixed(1)})`
+      }
+    }
+  }
+  assert(worst <= 0.001, `채로 밀어붙여도 퍽이 판을 벗어나지 않는다 (최대 이탈=${worst.toFixed(1)} ${worstPos})`)
+})()
+
 // 16) 채도 경기장을 벗어나지 않는다
 ;(function paddleWalls() {
   const h = createHockeyModel()

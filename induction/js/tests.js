@@ -23,7 +23,7 @@ import {
   shiftedElectrons,
   nearSideCharge,
   farSideCharge,
-  totalCharge,
+  objectCharge,
   forceOnObject,
   stepCan,
   stepScope,
@@ -81,7 +81,7 @@ function run(m, seconds) {
 ;(function inductionConservesCharge() {
   const m = createModel()
   placeRod(m, 10)
-  eq(totalCharge(m), 0, '유도만으로는 물체 전체 전하가 0(전하가 새로 생기지 않는다)')
+  eq(objectCharge(m), 0, '유도만으로는 물체 전체 전하가 0(전하가 새로 생기지 않는다)')
   eq(nearSideCharge(m) + farSideCharge(m), 0, '가까운 쪽과 먼 쪽 전하의 합은 0')
 })()
 
@@ -112,20 +112,20 @@ function run(m, seconds) {
   for (const rod of [1, -1]) {
     const m = createModel()
     setRodCharge(m, rod)
-    const before = m.rodCharge + totalCharge(m)
+    const before = m.rodCharge + objectCharge(m)
     eq(Math.abs(m.rodCharge), ROD_FULL_CHARGES, `막대는 처음에 ${ROD_FULL_CHARGES}개를 가지고 있다`)
 
     placeRod(m, 40)
     run(m, 4) // 끌려와 닿을 때까지
 
-    const after = m.rodCharge + totalCharge(m)
+    const after = m.rodCharge + objectCharge(m)
     eq(after, before, `막대 ${rod > 0 ? '(+)' : '(−)'}: 막대와 캔의 전하 합이 그대로다(전하 보존)`)
     assert(
       Math.abs(m.rodCharge) < ROD_FULL_CHARGES,
       `막대가 나눠준 만큼 줄어든다 (${ROD_FULL_CHARGES} → ${Math.abs(m.rodCharge)})`,
     )
     eq(Math.sign(m.rodCharge), rod, '막대의 전기 종류는 그대로다(약해질 뿐)')
-    eq(Math.abs(m.rodCharge) + Math.abs(totalCharge(m)), ROD_FULL_CHARGES, '개수로 봐도 딱 맞는다')
+    eq(Math.abs(m.rodCharge) + Math.abs(objectCharge(m)), ROD_FULL_CHARGES, '개수로 봐도 딱 맞는다')
   }
 })()
 
@@ -187,7 +187,7 @@ function run(m, seconds) {
   run(m, 4) // 끌려와서 닿을 때까지
   eq(Math.sign(m.contactCharge), -1, '(−)막대에 닿으면 캔도 (−)로 대전된다(같은 전기)')
   eq(Math.abs(m.contactCharge), CONTACT_AMOUNT, '옮겨온 전하량이 정해진 값만큼이다')
-  assert(totalCharge(m) !== 0, '접촉 후에는 물체 전체 전하가 더 이상 0이 아니다')
+  assert(objectCharge(m) !== 0, '접촉 후에는 물체 전체 전하가 더 이상 0이 아니다')
   eq(forceOnObject(m), REPEL, '접촉해 같은 전기를 띠면 그때부터는 밀려난다')
 
   const afterTouch = gap(m)
@@ -240,7 +240,7 @@ function run(m, seconds) {
   resetCan(m)
   eq(m.contactCharge, 0, '초기화하면 대전 상태가 사라진다')
   eq(m.can.v, 0, '초기화하면 캔이 멈춘다')
-  eq(totalCharge(m), 0, '초기화하면 다시 중성')
+  eq(objectCharge(m), 0, '초기화하면 다시 중성')
 
   // 검전기를 대전시켜 둔 뒤에도 초기화가 먹혀야 한다
   const s = createModel()

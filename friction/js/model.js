@@ -282,6 +282,24 @@ export function stepHockey(model, dt) {
   puck.y += puck.vy * step
 
   // 4) 벽 — 사방이 막혀 있어 화면 밖으로 나가지 않는다
+  clampToWalls(puck)
+
+  // 5) 채와의 충돌 — 끌어당기는 조합에서는 퍽이 채에 붙어버리므로 물리적으로 막아준다.
+  //    (전기력만 있으면 퍽이 채 안으로 파고들어 "닿았는데 통과한다"처럼 보인다.)
+  resolvePaddleCollision(model)
+
+  // 충돌은 퍽을 밀어내고 채의 속도를 얹으므로, **벽과 속도를 여기서 한 번 더 조인다.**
+  // 안 그러면 4)에서 세운 약속이 5)에서 깨진다:
+  //  · 채로 퍽을 벽에 밀어붙이면 충돌이 퍽을 벽 **밖으로** 밀어낸다(실제로 중심이 판
+  //    오른끝보다 52만큼 밖까지 나갔다 — 2026-08-07 전체 점검에서 발견).
+  //  · 손가락을 화면 끝에서 끝까지 한 프레임에 휙 그으면 채 속도가 엄청나게 커진다.
+  clampToWalls(puck)
+  clampSpeed(puck)
+  return model
+}
+
+/** 퍽을 판 안에 가둔다. 벽에 부딪히면 튕겨 나온다. */
+function clampToWalls(puck) {
   const minX = FIELD.x + PUCK_R
   const maxX = FIELD.x + FIELD.w - PUCK_R
   const minY = FIELD.y + PUCK_R
@@ -300,16 +318,6 @@ export function stepHockey(model, dt) {
     puck.y = maxY
     puck.vy = -Math.abs(puck.vy) * RESTITUTION
   }
-
-  // 5) 채와의 충돌 — 끌어당기는 조합에서는 퍽이 채에 붙어버리므로 물리적으로 막아준다.
-  //    (전기력만 있으면 퍽이 채 안으로 파고들어 "닿았는데 통과한다"처럼 보인다.)
-  resolvePaddleCollision(model)
-  // 충돌은 채의 속도를 퍽에 얹으므로 여기서 한 번 더 조인다. 손가락을 화면 끝에서 끝까지
-  // 한 프레임에 휙 그으면 채 속도가 엄청나게 커지는데, 그대로 두면 "속도는 언제나
-  // MAX_SPEED 이하"라는 약속이 프레임 끝에서 깨진다(다음 프레임에서 잡히긴 하지만,
-  // 그 사이에 상태를 읽는 쪽이 말도 안 되는 값을 보게 된다).
-  clampSpeed(puck)
-  return model
 }
 
 /** 퍽의 속력을 MAX_SPEED 이하로 조인다. 방향은 그대로 두고 크기만 줄인다. */

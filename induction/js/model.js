@@ -175,10 +175,14 @@ export function farSideCharge(model) {
 }
 
 /**
- * 물체 **전체**의 알짜 전하.
+ * **물체(캔/검전기) 하나**의 알짜 전하. 막대는 포함하지 않는다.
  * 유도만으로는 0이다. 막대에 닿아 전하가 옮겨온 뒤에는 그 값이 남는다.
+ *
+ * ⚠ 계 전체의 전하 보존을 보려면 **`model.rodCharge + objectCharge(model)`**를 써야 한다.
+ *   예전 이름이 `totalCharge`였는데, 그 이름 때문에 "계 전체"로 착각해 보존이 깨진 줄
+ *   알고 헛다리를 짚은 적이 있다(2026-08-07 전체 점검). 그래서 이름을 바꿨다.
  */
-export function totalCharge(model) {
+export function objectCharge(model) {
   return model.contactCharge
 }
 
