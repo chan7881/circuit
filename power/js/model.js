@@ -101,7 +101,18 @@ export function standbyWatt(model) {
   return APPLIANCES.reduce((sum, a) => sum + (isOn(model, a.id) ? 0 : a.standby), 0)
 }
 
-/** 이 상태로 한 달 내내 썼을 때의 전력량(kWh) */
+/**
+ * 이 상태로 **1시간** 썼을 때의 전력량(kWh).
+ *
+ * 화면에는 이 값을 보여 준다. 한 달 전력량을 대신 보여주면 학생이 "1시간 값 × 시간"을
+ * 직접 해 볼 거리가 없어진다 — 학습지에서 그 계산을 시킬 계획이라, 중간 과정을 시뮬레이터가
+ * 대신 해 버리면 안 된다(2026-08-07 사용자 결정).
+ */
+export function kwhPerHour(model) {
+  return totalWatt(model) / 1000
+}
+
+/** 이 상태로 한 달 내내(하루 24시간) 썼을 때의 전력량(kWh) — 요금 계산에만 쓴다. */
 export function kwhPerMonth(model) {
   return (totalWatt(model) * HOURS_PER_MONTH) / 1000
 }
@@ -114,24 +125,4 @@ export function wonPerMonth(model) {
 /** 이 집이 한 번에 쓸 수 있는 최대치(모든 기구를 켰을 때) — 막대 그래프의 기준으로 쓴다 */
 export function maxWatt() {
   return APPLIANCES.reduce((sum, a) => sum + a.watt, 0)
-}
-
-// ── 전구 비교 ─────────────────────────────────────────────────────────
-//
-// 같은 전기 에너지를 넣었을 때 얼마만큼이 빛이 되고 얼마만큼이 열로 빠져나가는지 비교한다.
-// 교과서 그림 VII-10과 같은 이야기다. 비율은 대표적인 어림값이다.
-
-export const BULBS = [
-  { id: 'incandescent', name: '백열전구', lightRatio: 0.05 },
-  { id: 'led', name: 'LED 전구', lightRatio: 0.4 },
-]
-
-/** 넣은 전기 에너지 중 빛으로 바뀌는 몫(0~1) */
-export function lightShare(bulbId) {
-  return BULBS.find((b) => b.id === bulbId)?.lightRatio ?? 0
-}
-
-/** 열로 빠져나가는 몫(0~1). 넣은 에너지는 사라지지 않으므로 빛과 열의 합은 언제나 1이다. */
-export function heatShare(bulbId) {
-  return 1 - lightShare(bulbId)
 }

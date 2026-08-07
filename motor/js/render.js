@@ -46,6 +46,8 @@ const WIRE_R = 0.028
 // ── 모드 A(그네) 배치 ──
 const PIVOT_Y = 1.5
 const SWING_GAP_Y = PIVOT_Y - COIL_LEN // 아래 가로 도선의 높이(= 말굽자석 틈 한가운데)
+/** 자기장 화살표를 놓는 깊이 — 말굽이 트인 앞쪽이라 코일에 가리지 않는다. */
+const SWING_B_Z = 0.24
 
 // ── 모드 B(전동기) 배치 ──
 const MOTOR_CENTER_Y = 0.95
@@ -456,6 +458,7 @@ export function createScene(canvas) {
     swingI: makeArrow(CURRENT_COLOR, CURRENT_SHAFT_R),
     swingB1: makeArrow(FIELD_COLOR),
     swingB2: makeArrow(FIELD_COLOR),
+    swingB3: makeArrow(FIELD_COLOR),
     swingF: makeArrow(FORCE_COLOR, 0.036),
     // 전동기 모드 — 코일 양쪽 변에 하나씩
     motorB1: makeArrow(FIELD_COLOR),
@@ -510,10 +513,20 @@ export function createScene(canvas) {
         // 아래 가로 도선의 지금 위치(그네가 흔들리면 같이 움직인다)
         const wire = new THREE.Vector3(0, -COIL_LEN, 0).applyEuler(swingPivot.rotation).add(swingPivot.position)
 
-        // B — 틈 사이를 지나는 연직 자기장(polarity가 방향을 정한다). 도선 양옆에 두 개.
-        for (const [key, sx] of [['swingB1', -1], ['swingB2', 1]]) {
-          const from = new THREE.Vector3(sx * 0.09, SWING_GAP_Y - gapHalf * 0.9, 0)
-          placeArrow(arrows[key], from, new THREE.Vector3(0, pol, 0), gapHalf * 1.8)
+        // B — 말굽자석 **두 극 사이**를 지나는 자기장. N극 면에서 나와 S극 면으로 들어가는
+        // 모습이 그대로 보이도록, 틈의 **아래 극 면에서 위 극 면까지 꽉 채워** 그린다.
+        //
+        // 자리도 중요하다: 예전에는 틈 안쪽 깊숙이(z=0) 짧게 그려서, 코일 도선과 전류 화살표
+        // 뒤에 가려 잘 보이지 않았다(2026-08-07 사용자 지적). 말굽이 트여 있는 앞쪽으로
+        // 당겨 오면 두 극 사이를 지나는 것이 한눈에 보인다.
+        const bFrom = SWING_GAP_Y - gapHalf // N극 면(polarity가 +면 아래가 N)
+        for (const [key, sx] of [['swingB1', -1], ['swingB2', 0], ['swingB3', 1]]) {
+          placeArrow(
+            arrows[key],
+            new THREE.Vector3(sx * 0.1, pol > 0 ? bFrom : bFrom + gapHalf * 2, SWING_B_Z),
+            new THREE.Vector3(0, pol, 0),
+            gapHalf * 2,
+          )
         }
         // I — 아래 가로 도선을 따라 흐르는 전류. 도선과 같은 축에, 도선보다 굵고 길게 그려
         // 도선에 파묻히지 않게 한다(머리가 도선 끝 밖으로 나오도록).

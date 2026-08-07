@@ -2,7 +2,6 @@
 
 import {
   APPLIANCES,
-  BULBS,
   WON_PER_KWH,
   createModel,
   getAppliance,
@@ -14,11 +13,10 @@ import {
   totalWatt,
   standbyWatt,
   HOURS_PER_MONTH,
+  kwhPerHour,
   kwhPerMonth,
   wonPerMonth,
   maxWatt,
-  lightShare,
-  heatShare,
 } from './model.js'
 
 const results = []
@@ -122,6 +120,23 @@ function close(actual, expected, label, tol = 1e-9) {
   assert(inc > led * 5, `백열전구가 LED보다 훨씬 많이 쓴다 (${inc} vs ${led})`)
 })()
 
+// 8-2) 화면에 보여 주는 것은 **1시간** 전력량이다.
+//      한 달 전력량을 대신 보여주면 학생이 "1시간 값 × 시간"을 해 볼 거리가 없어진다.
+;(function hourlyEnergy() {
+  const m = createModel()
+  allOff(m)
+  toggle(m, 'iron') // 1200 W
+  close(kwhPerHour(m), 1.2, '1200 W를 1시간 쓰면 1.2 kWh')
+  toggle(m, 'led') // +8 W
+  close(kwhPerHour(m), 1.208, '기구를 더 켜면 그만큼 늘어난다')
+
+  // 한 달 값은 1시간 값의 (24×30)배 — 학생이 직접 할 계산이 시뮬 안에서도 같은 관계여야 한다
+  close(kwhPerMonth(m), kwhPerHour(m) * HOURS_PER_MONTH, '한 달 전력량 = 1시간 전력량 × 24 × 30')
+
+  allOff(m)
+  eq(kwhPerHour(m), 0, '다 끄면 1시간 전력량도 0')
+})()
+
 // 9) 막대 그래프 기준 — 모두 켜면 최대치와 같다
 ;(function maxIsAllOn() {
   const m = createModel()
@@ -145,27 +160,10 @@ function close(actual, expected, label, tol = 1e-9) {
   )
 })()
 
-// 11) 전구 비교 — 넣은 에너지는 사라지지 않는다(빛 + 열 = 1)
-;(function energyIsConserved() {
-  for (const b of BULBS) {
-    close(lightShare(b.id) + heatShare(b.id), 1, `${b.name}: 빛 몫 + 열 몫 = 1(에너지는 사라지지 않는다)`)
-  }
-})()
-
-// 12) LED가 빛으로 바꾸는 몫이 더 크다 — 이 화면의 핵심 비교
-;(function ledIsMoreEfficient() {
-  assert(
-    lightShare('led') > lightShare('incandescent'),
-    `LED가 빛으로 바꾸는 몫이 더 크다 (${lightShare('led')} vs ${lightShare('incandescent')})`,
-  )
-  assert(heatShare('incandescent') > 0.5, '백열전구는 넣은 에너지의 절반 이상이 열로 빠져나간다')
-})()
-
 // 13) 모르는 id는 조용히 0으로 — 화면이 깨지지 않아야 한다
 ;(function unknownId() {
   const m = createModel()
   eq(applianceWatt(m, '없는기구'), 0, '모르는 기구의 소비 전력은 0')
-  eq(lightShare('없는전구'), 0, '모르는 전구의 빛 몫은 0')
 })()
 
 export function runAll() {

@@ -51,6 +51,7 @@ const WIDE = {
   kx: 0.86, ky: 0.34,
   cols: [-174, -58, 58, 174],
   rows: [260, 672],
+  roomsAcross: 4, // 방 넷이 나란히 — 방마다 위·아래 두 자리에 기구가 하나씩
   busAlong: 'row', // 두 줄 사이를 가로지르는 간선(가로) + 기구마다 세로로 갈라짐
   busS: 466,
   panelD: -232,
@@ -61,11 +62,36 @@ const TALL = {
   kx: 0.5, ky: 0.66,
   cols: [-110, 110],
   rows: [200, 397, 594, 791],
+  roomsAcross: 2, // 방 둘씩 두 줄 = 넷
   busAlong: 'col', // 두 칸 사이를 지나는 간선(세로) + 기구마다 가로로 갈라짐
   busD: 0,
   panelS: 120,
   sMin: 96, sMax: 880, dMax: 260,
   OX: 250, OY: 96, W: 500, H: 720,
+}
+
+/**
+ * 방 배치 — 실제 집처럼 그럴듯하게 묶는다. 방 하나에 기구 둘.
+ * 순서가 곧 자리다: i번째 방 = (칸 i%roomsAcross, 줄 i/roomsAcross), 그 방의 두 기구가
+ * 그 칸의 위·아래 자리에 들어간다.
+ */
+const ROOMS = [
+  { name: '주방', ids: ['led', 'fridge'] },
+  { name: '거실', ids: ['tv', 'aircon'] },
+  { name: '안방', ids: ['charger', 'iron'] },
+  { name: '공부방', ids: ['incandescent', 'fan'] },
+]
+
+/** 기구 id → 화면 칸(칸 번호, 줄 번호) */
+function slotOf(g, id) {
+  for (const [r, room] of ROOMS.entries()) {
+    const k = room.ids.indexOf(id)
+    if (k < 0) continue
+    const rc = r % g.roomsAcross
+    const rr = Math.floor(r / g.roomsAcross)
+    return { col: rc, row: rr * 2 + k, room: r }
+  }
+  return { col: 0, row: 0, room: 0 }
 }
 
 /** 가로가 세로의 1.35배보다 넓으면 넓은 각도(4칸×2줄), 아니면 세로로 세운 각도(2칸×4줄). */
@@ -106,12 +132,13 @@ export function screenToLogical(layout, x, y) {
 
 /** 기구가 화면 어디에 그려지는지 — 그리기와 탭 판정이 같은 값을 쓴다. */
 export function slots(g) {
-  return APPLIANCES.map((a, i) => {
-    const d = g.cols[i % g.cols.length]
-    const s = g.rows[Math.floor(i / g.cols.length)]
+  return APPLIANCES.map((a) => {
+    const at = slotOf(g, a.id)
+    const d = g.cols[at.col]
+    const s = g.rows[at.row]
     const f = ds(d, s)
     const p = project(g, f.u, f.v)
-    return { id: a.id, u: f.u, v: f.v, d, s, x: p.x, y: p.y, depth: s }
+    return { id: a.id, u: f.u, v: f.v, d, s, x: p.x, y: p.y, depth: s, room: at.room }
   })
 }
 
@@ -419,17 +446,109 @@ function drawFloor(ctx, g) {
   ctx.fill()
   ctx.stroke()
 
-  ctx.strokeStyle = ROOM_LINE
-  ctx.lineWidth = 2
-  for (let i = 1; i < g.cols.length; i++) {
-    const d = (g.cols[i - 1] + g.cols[i]) / 2
-    const [a, b] = dividerEnds(g, d)
-    const pa = project(g, a.u, a.v)
-    const pb = project(g, b.u, b.v)
+  ctx.restore()
+}
+
+/** 방을 가르는 칸막이가 놓이는 자리들. 화면 칸 사이사이에 선다. */
+function partitions(g) {
+  const out = []
+  // 칸(가로) 사이 — 화면에서 세로로 선 벽
+  for (let i = 1; i < g.roomsAcross; i++) {
+    out.push({ kind: 'd', at: (g.cols[i - 1] + g.cols[i]) / 2 })
+  }
+  // 줄(세로) 사이 — 방이 위아래로도 나뉘는 배치에서만
+  const roomsDown = Math.ceil(g.rows.length / 2)
+  for (let r = 1; r < roomsDown; r++) {
+    // 방 하나가 두 줄을 쓰므로, 아랫방 첫 줄과 윗방 둘째 줄 사이에 세운다.
+    // 딱 가운데에 두면 위 칸 이름표와 겹쳐서, 조금 아래로 내린다.
+    const a = g.rows[r * 2 - 1]
+    const b = g.rows[r * 2]
+    out.push({ kind: 's', at: a + (b - a) * 0.62 })
+  }
+  return out
+}
+
+/**
+ * 방 칸막이 — 실제 집처럼 방이 나뉘어 보이게 한다.
+ * ⚠️ **기구를 가리면 안 된다.** 그래서 바깥벽(WALL_H)보다 훨씬 낮게 세우고, 기구가 놓인
+ *    칸 사이의 빈 자리에만 둔다(2026-08-07 사용자 요청).
+ */
+const PARTITION_H = 26
+
+function drawPartitions(ctx, g) {
+  ctx.save()
+  for (const p of partitions(g)) {
+    let a
+    let b
+    if (p.kind === 'd') {
+      const [ea, eb] = dividerEnds(g, p.at)
+      a = project(g, ea.u, ea.v)
+      b = project(g, eb.u, eb.v)
+    } else {
+      // s가 고정된 선 — 바닥 안에서 d가 갈 수 있는 범위만큼
+      const s = p.at
+      const dMin = Math.max(-g.dMax, -s, s - 2 * FLOOR_V)
+      const dMax = Math.min(g.dMax, s, 2 * FLOOR_U - s)
+      const fa = ds(dMin, s)
+      const fb = ds(dMax, s)
+      a = project(g, fa.u, fa.v)
+      b = project(g, fb.u, fb.v)
+    }
+    ctx.fillStyle = WALL
+    ctx.strokeStyle = '#b8c2cf'
+    ctx.lineWidth = 1.5
     ctx.beginPath()
-    ctx.moveTo(pa.x, pa.y)
-    ctx.lineTo(pb.x, pb.y)
+    ctx.moveTo(a.x, a.y)
+    ctx.lineTo(b.x, b.y)
+    ctx.lineTo(b.x, b.y - PARTITION_H)
+    ctx.lineTo(a.x, a.y - PARTITION_H)
+    ctx.closePath()
+    ctx.fill()
     ctx.stroke()
+    // 벽 윗면
+    ctx.fillStyle = WALL_TOP
+    ctx.beginPath()
+    ctx.moveTo(a.x, a.y - PARTITION_H)
+    ctx.lineTo(b.x, b.y - PARTITION_H)
+    ctx.lineTo(b.x, b.y - PARTITION_H - 4)
+    ctx.lineTo(a.x, a.y - PARTITION_H - 4)
+    ctx.closePath()
+    ctx.fill()
+  }
+  ctx.restore()
+}
+
+/**
+ * 방 이름표 — 방마다 어떤 방인지 적는다.
+ * 자리는 **벽면 위**다. 바닥에 적으면 기구나 이름표와 부딪히는데, 벽면은 비어 있다.
+ */
+function drawRoomNames(ctx, g) {
+  ctx.save()
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.font = 'bold 13px system-ui, sans-serif'
+  ctx.fillStyle = '#64748b'
+
+  const roomsDown = Math.ceil(g.rows.length / 2)
+  const parts = partitions(g)
+  const sParts = parts.filter((p) => p.kind === 's')
+
+  for (const [i, room] of ROOMS.entries()) {
+    const rc = i % g.roomsAcross
+    const rr = Math.floor(i / g.roomsAcross)
+    if (rc >= g.cols.length || rr >= roomsDown) continue
+    const d = g.cols[rc]
+    let y
+    if (rr === 0) {
+      // 맨 안쪽 방 — 바깥 뒷벽에 붙인다
+      const backS = Math.max(g.sMin, Math.abs(d))
+      y = project(g, ...Object.values(ds(d, backS))).y - WALL_H / 2
+    } else {
+      // 앞쪽 방 — 바로 뒤에 선 칸막이 벽면에 붙인다
+      const wallS = sParts[rr - 1].at
+      y = project(g, ...Object.values(ds(d, wallS))).y - PARTITION_H / 2
+    }
+    ctx.fillText(room.name, g.OX + d * g.kx, y)
   }
   ctx.restore()
 }
@@ -555,6 +674,8 @@ export function drawHome(ctx, cssWidth, cssHeight, model, state) {
 
   drawWalls(ctx, g)
   drawFloor(ctx, g)
+  drawPartitions(ctx, g)
+  drawRoomNames(ctx, g)
 
   // 바닥 앞쪽을 가로지르는 간선 — 배전반에서 오른쪽 끝까지
   const list = slots(g)

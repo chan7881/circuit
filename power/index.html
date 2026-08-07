@@ -13,6 +13,7 @@
     잘 와닿는다(2026-08-07 사용자 피드백). 합계는 그림 아래 HTML로 둔다(숫자는 글자가 또렷한
     편이 읽기 좋고, 화면이 좁아져도 줄바꿈이 알아서 맞는다).
   */
+  .title { font-size: 14px; font-weight: 700; padding: 0 6px; }
   #home { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 6px 10px 4px; }
   #house { flex: 1; min-height: 0; width: 100%; display: block; touch-action: none; }
 
@@ -41,10 +42,7 @@
 <div id="app">
 
   <header id="topbar">
-    <div class="seg" role="tablist" aria-label="모드 선택">
-      <button id="tab-home" class="seg-btn selected tap-target" role="tab" aria-selected="true">1. 우리 집</button>
-      <button id="tab-compare" class="seg-btn tap-target" role="tab" aria-selected="false">2. 전구 비교</button>
-    </div>
+    <strong class="title">우리 집 전기 사용</strong>
     <div class="spacer"></div>
     <button id="btn-expand" class="tap-target icon-btn primary" aria-label="크게 보기">
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
@@ -52,27 +50,22 @@
     </button>
   </header>
 
-  <!-- 모드 1: 우리 집 (HTML) -->
   <main id="home">
     <canvas id="house" aria-label="집 안의 전기 기구들. 기구를 눌러 켜고 끌 수 있다"></canvas>
     <dl class="totals">
       <div class="total"><dt>지금 쓰는 전력</dt><dd id="t-watt">0 W</dd></div>
-      <div class="total"><dt>한 달 내내 쓰면</dt><dd id="t-kwh">0 kWh</dd></div>
+      <div class="total"><dt>1시간 전력량</dt><dd id="t-kwh">0 kWh</dd></div>
       <div class="total"><dt>한 달 요금</dt><dd id="t-won">0 원</dd></div>
     </dl>
     <div class="bar"><div id="t-bar" style="width:0%"></div></div>
     <p class="note" id="t-note"></p>
-    <p class="note" id="t-caveat">이 요금은 1 kWh마다 같은 값을 곱해 어림한 것입니다. 실제 전기 요금은 많이 쓸수록 1 kWh당 값이 올라갑니다(누진제).</p>
+    <p class="note" id="t-caveat">요금은 한 달 내내 하루 24시간 켜 두었을 때를 기준으로 어림한 값입니다. 누진제는 반영하지 않았습니다.</p>
   </main>
 
-  <!-- 모드 2: 전구 비교 (캔버스) -->
-  <main id="compare-wrap" hidden>
-    <canvas id="board" aria-label="두 전구의 에너지 전환을 비교하는 화면"></canvas>
-  </main>
 
   <p id="hint-bar" role="status"></p>
 
-  <nav id="controls-home" class="controls" aria-label="우리 집 조작">
+  <nav class="controls" aria-label="조작">
     <div class="ctrl-group">
       <button id="btn-standby" class="chip tap-target">대기 전력 포함</button>
       <button id="btn-alloff" class="chip tap-target">모두 끄기</button>
@@ -82,11 +75,6 @@
     </div>
   </nav>
 
-  <nav id="controls-compare" class="controls" aria-label="전구 비교 조작" hidden>
-    <div class="ctrl-group">
-      <button id="btn-numbers" class="chip tap-target">비율 숫자 보기</button>
-    </div>
-  </nav>
 
 </div>
 <script type="module" src="js/main.js"></script>
