@@ -268,6 +268,35 @@ function run(m, seconds) {
   }
 })()
 
+// 14-4) **같은 극성으로 다가가는 동안 금속박이 도로 오므라들지 않는다** (단조성 검증)
+//
+// 예전 검증은 "멀 때 닫힘 / 가까울 때 열림" 두 지점만 봤다. 그 사이에서 잠깐 줄어드는 것은
+// 통과해 버려서, 닿는 순간 1.00 → 0.90으로 툭 줄던 것을 놓쳤다. 화면에서는 "가까이 갔더니
+// 닫힌다"로 보이는데, 이건 정확히 반대되는 결론을 가르치는 셈이다.
+;(function foilNeverClosesWhileApproaching() {
+  for (const rod of [1, -1]) {
+    const m = createModel()
+    setMode(m, 'scope')
+    setRodCharge(m, rod)
+
+    let prev = -1
+    let worst = null
+    // 아주 멀리서 닿을 때까지 촘촘히 좁혀 간다(접촉이 일어나는 순간까지 포함)
+    for (let gap = 260; gap >= 0; gap -= 4) {
+      setRodTipX(m, SCOPE_PLATE_LEFT - gap)
+      stepScope(m) // main.js가 매 프레임 부르는 것과 같게
+      const s = foilSpread(m)
+      if (s < prev - 1e-9 && worst === null) worst = `틈 ${gap}에서 ${prev.toFixed(3)} → ${s.toFixed(3)}`
+      prev = s
+    }
+    assert(
+      worst === null,
+      `막대 ${rod > 0 ? '(+)' : '(−)'}: 다가가는 동안 금속박이 한 번도 줄어들지 않는다${worst ? ` (${worst})` : ''}`,
+    )
+    assert(prev > 0.9, `끝까지 가면 금속박이 크게 벌어져 있다 (${prev.toFixed(2)})`)
+  }
+})()
+
 // 15) 중성 검전기 — 가까이 하면 금속박이 벌어진다
 ;(function neutralScopeOpens() {
   const m = createModel()

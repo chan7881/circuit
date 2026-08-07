@@ -234,14 +234,21 @@ function drawCan(ctx, box, isConductor, rollDistance) {
 /**
  * 물체 안의 전하를 그린다.
  *
- * 도체: 양성자(+)는 제자리에 고정, 자유 전자(−)만 한쪽으로 몰린다.
- *       → "왜 한쪽이 (+)가 되는가"가 그림만으로 설명된다(전자가 빠져나가서).
- * 부도체: 전자가 원자에 묶여 있어 +/−가 짝을 이룬 채 제자리에 머문다.
- * 접촉으로 대전된 뒤에는 옮겨온 전하를 통째로 더 그린다.
+ * ⚠️ **움직이는 것은 언제나 전자(−)뿐이다.** 양성자(+)는 원자핵에 있어 절대 옮겨 다니지 않는다.
+ *    예전에는 (+)막대에 닿아 대전되면 캔에 **(+) 기호를 더 그렸는데**, 그러면 "양전하가
+ *    옮겨왔다"로 읽혀 정확히 반대되는 오개념을 심는다(2026-08-07 사용자 지적).
+ *    그래서 이제 양성자 개수는 **언제나 CHARGE_PAIRS로 고정**하고, **전자 개수만 늘리거나
+ *    줄인다**:
+ *      · (−)막대에 닿음 → 전자가 넘어와 전자가 늘어난다     (알짜 −)
+ *      · (+)막대에 닿음 → 전자가 빠져나가 전자가 줄어든다   (알짜 +, 짝 잃은 양성자가 남는다)
+ *    짝을 잃고 홀로 남은 (+)가 보이는 것이 "왜 (+)를 띠는가"에 대한 올바른 그림이다.
  */
 function drawCanCharges(ctx, box, model, showCharges) {
   if (!showCharges) return
-  const shifted = shiftedElectrons(model)
+
+  // 전자 수 = 원래 개수 − 알짜 전하. (알짜 +3이면 전자가 3개 빠져나간 것)
+  const nElectrons = Math.max(0, CHARGE_PAIRS - model.contactCharge)
+  const shifted = Math.min(shiftedElectrons(model), nElectrons)
   const drift = electronDrift(model) // +1이면 먼(오른) 쪽, −1이면 가까운(왼) 쪽
   const rows = 2
   const cols = Math.ceil(CHARGE_PAIRS / rows)
@@ -249,8 +256,20 @@ function drawCanCharges(ctx, box, model, showCharges) {
   const cellW = (box.w - padX * 2) / cols
   const cellH = (box.h - 40) / (rows + 1)
 
-  // 몰려간 전자가 놓일 자리 — 겹쳐 쌓이면 몇 개인지 셀 수가 없으므로, 몰린 쪽 가장자리에
-  // 개수에 맞춰 위아래로 고르게 편다.
+  const homeSpot = (i) => {
+    const c = i % cols
+    const r = Math.floor(i / cols)
+    return { x: box.x + padX + cellW * (c + 0.5), y: box.y + 26 + cellH * (r + 1) }
+  }
+
+  // 양성자는 개수도 자리도 변하지 않는다
+  for (let i = 0; i < CHARGE_PAIRS; i++) {
+    const h = homeSpot(i)
+    drawPlus(ctx, h.x, h.y - 10)
+  }
+
+  // 유도로 몰려간 전자가 놓일 자리 — 겹쳐 쌓이면 몇 개인지 셀 수가 없으므로, 몰린 쪽
+  // 가장자리에 개수에 맞춰 위아래로 고르게 편다.
   const pileX = drift > 0 ? box.x + box.w - 20 : box.x + 20
   const pileTop = box.y + 24
   const pileSpan = box.h - 48
@@ -258,27 +277,19 @@ function drawCanCharges(ctx, box, model, showCharges) {
     shifted === 1 ? pileTop + pileSpan / 2 : pileTop + (pileSpan * k) / (shifted - 1),
   )
 
-  for (let i = 0; i < CHARGE_PAIRS; i++) {
-    const c = i % cols
-    const r = Math.floor(i / cols)
-    const homeX = box.x + padX + cellW * (c + 0.5)
-    const y = box.y + 26 + cellH * (r + 1)
-
-    drawPlus(ctx, homeX, y - 10) // 양성자는 언제나 제자리
-
-    if (i < shifted) {
-      drawMinus(ctx, pileX, pileSpots[i])
-    } else {
-      drawMinus(ctx, homeX, y + 10) // 아직 안 움직인 전자
+  for (let k = 0; k < nElectrons; k++) {
+    if (k < shifted) {
+      drawMinus(ctx, pileX, pileSpots[k])
+      continue
     }
-  }
-
-  // 접촉으로 옮겨온 전하 — 유도(자리만 바뀜)와 접촉(전하가 실제로 늘어남)의 차이가 보이게
-  if (model.contactCharge !== 0) {
-    for (let i = 0; i < Math.abs(model.contactCharge); i++) {
-      const x = box.x + box.w / 2 + (i - 1) * 22
-      if (model.contactCharge > 0) drawPlus(ctx, x, box.y + box.h - 26, 8)
-      else drawMinus(ctx, x, box.y + box.h - 26, 8)
+    const rest = k - shifted
+    if (rest < CHARGE_PAIRS) {
+      const h = homeSpot(rest)
+      drawMinus(ctx, h.x, h.y + 10) // 아직 안 움직인 전자
+    } else {
+      // 접촉으로 넘어와 원래 자리보다 많아진 전자 — 아래쪽에 따로 늘어놓는다
+      const extra = rest - CHARGE_PAIRS
+      drawMinus(ctx, box.x + box.w / 2 + (extra - 1) * 22, box.y + box.h - 26)
     }
   }
 }
@@ -385,27 +396,31 @@ function drawScopeCharges(ctx, model, showCharges, spread) {
     y: zones.plate.y,
   }))
 
+  // 양성자(원자핵)는 개수도 자리도 변하지 않는다
   for (let i = 0; i < CHARGE_PAIRS; i++) {
-    const home = homes[i]
-    drawPlus(ctx, home.x - 9, home.y) // 양성자(원자핵)는 절대 안 움직인다
-
-    const moved = i < shifted
-    let ex = home.x + 9
-    let ey = home.y
-    if (moved) {
-      const spot = drift > 0 ? farSpots[i] : nearSpots[i]
-      ex = spot.x
-      ey = spot.y
-    }
-    drawMinus(ctx, ex, ey)
+    drawPlus(ctx, homes[i].x - 9, homes[i].y)
   }
 
-  // 미리 대전시켜 둔 전하(검전기를 이미 (−)로 만들어 둔 상태)
-  if (model.preCharge !== 0) {
-    for (let i = 0; i < Math.abs(model.preCharge); i++) {
-      const p = foilPoint(zones.foil.angle, 0.92, i % 2 === 0 ? -1 : 1)
-      if (model.preCharge > 0) drawPlus(ctx, p.x, p.y + Math.floor(i / 2) * 15, 7)
-      else drawMinus(ctx, p.x, p.y + Math.floor(i / 2) * 15, 7)
+  // ⚠️ 캔과 같은 원칙 — **움직이는 것은 전자뿐이다.** 대전된 검전기를 (+) 기호를 더 그려서
+  //    나타내면 "양전하가 옮겨왔다"는 오개념이 된다(2026-08-07 사용자 지적).
+  //    전자 개수만 늘리거나 줄이고, 짝을 잃은 양성자가 남는 것으로 (+)를 나타낸다.
+  const nElectrons = Math.max(0, CHARGE_PAIRS - model.preCharge)
+  const nShifted = Math.min(shifted, nElectrons)
+
+  for (let k = 0; k < nElectrons; k++) {
+    if (k < nShifted) {
+      const spot = drift > 0 ? farSpots[k] : nearSpots[k]
+      drawMinus(ctx, spot.x, spot.y)
+      continue
+    }
+    const rest = k - nShifted
+    if (rest < CHARGE_PAIRS) {
+      drawMinus(ctx, homes[rest].x + 9, homes[rest].y)
+    } else {
+      // 접촉으로 넘어와 원래보다 많아진 전자 — 금속박 끝쪽에 따로 붙인다
+      const extra = rest - CHARGE_PAIRS
+      const p = foilPoint(zones.foil.angle, 0.92, extra % 2 === 0 ? -1 : 1)
+      drawMinus(ctx, p.x, p.y + Math.floor(extra / 2) * 15, 7)
     }
   }
 }

@@ -285,15 +285,22 @@ export function stepScope(model) {
  * - 중성 검전기: 막대를 가까이 하면 금속박 쪽(먼 쪽)에 같은 종류 전하가 몰려 벌어진다.
  * - 이미 대전된 검전기: **같은 극성**의 막대가 오면 전하가 금속박으로 더 몰려 **더 벌어지고**,
  *   **반대 극성**이면 전하가 위로 끌려 올라가 **오므라든다**. (JavaLab 검전기의 핵심 기능)
+ *
+ * ⚠️ 같은 극성으로 다가가는 동안에는 **절대로 도로 오므라들면 안 된다.** 예전에는 유도 몫에
+ *    임의의 0.8을 곱해 놓아서, 닿는 순간 벌어짐이 1.00 → 0.90으로 **툭 줄었다** — 화면에서는
+ *    "가까이 갔더니 금속박이 닫힌다"로 보여 정확히 반대되는 결론을 가르친다(2026-08-07
+ *    사용자 지적). 0.8을 없애니 닿기 직전(유도 1.0)과 닿은 직후(가진 전하 0.5 + 유도 0.5)가
+ *    자연스럽게 이어진다.
  */
 export function foilSpread(model) {
-  const induced = shiftedElectrons(model) / CHARGE_PAIRS // 0~1
-  if (model.preCharge === 0) return induced
+  // 유도로 금속박에 몰리는 정도 — 가까울수록, 막대가 셀수록 크다.
+  // 개수(shiftedElectrons)로 재면 계단처럼 툭툭 끊겨서, 여기서는 이어지는 값을 쓴다.
+  const induced = proximity(model) * rodStrength(model)
+  if (model.preCharge === 0) return Math.max(0, Math.min(1, induced))
 
   const base = Math.min(1, Math.abs(model.preCharge) / CHARGE_PAIRS)
   const same = Math.sign(model.preCharge) === Math.sign(model.rodCharge)
-  const delta = induced * 0.8
-  return Math.max(0, Math.min(1, same ? base + delta : base - delta))
+  return Math.max(0, Math.min(1, base + (same ? induced : -induced)))
 }
 
 /** 검전기 금속박이 지금 어떤 상태인지 — 화면 판정이 아니라 테스트에서 규칙을 고정하려고 둔다. */
