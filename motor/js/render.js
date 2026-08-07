@@ -114,18 +114,41 @@ export function createScene(canvas) {
   }
   const TEX_N = makeLetterTexture('N', '#b91c1c')
   const TEX_S = makeLetterTexture('S', '#1d4ed8')
+  const TEX_PLUS = makeLetterTexture('+', '#b91c1c')
+  const TEX_MINUS = makeLetterTexture('−', '#1d4ed8')
 
-  /** 자석 극에 붙이는 N/S 딱지. setPole('N'|'S')로 나중에 바꿀 수 있다. */
-  function makePoleLabel(parent, x, y, z, size = 0.17) {
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX_N, depthTest: false }))
+  /** 글자 딱지 하나. setTexture()로 나중에 다른 글자로 바꿀 수 있다. */
+  function makeLabel(parent, x, y, z, size, initialTex) {
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: initialTex, depthTest: false }))
     sprite.position.set(x, y, z)
     sprite.scale.set(size, size, size)
-    sprite.renderOrder = 10 // 자석 뒤에 숨지 않도록 항상 위에 그린다
+    sprite.renderOrder = 10 // 물체 뒤에 숨지 않도록 항상 위에 그린다
     parent.add(sprite)
     return {
-      setPole(p) {
-        sprite.material.map = p === 'N' ? TEX_N : TEX_S
+      setTexture(tex) {
+        if (sprite.material.map === tex) return
+        sprite.material.map = tex
         sprite.material.needsUpdate = true
+      },
+    }
+  }
+
+  /** 자석 극에 붙이는 N/S 딱지. setPole('N'|'S')로 바꾼다. */
+  function makePoleLabel(parent, x, y, z, size = 0.17) {
+    const label = makeLabel(parent, x, y, z, size, TEX_N)
+    return {
+      setPole(p) {
+        label.setTexture(p === 'N' ? TEX_N : TEX_S)
+      },
+    }
+  }
+
+  /** 전지 단자에 붙이는 +/− 딱지. setPlus(true|false)로 바꾼다. */
+  function makeTerminalLabel(parent, x, y, z, size = 0.15) {
+    const label = makeLabel(parent, x, y, z, size, TEX_PLUS)
+    return {
+      setPlus(isPlus) {
+        label.setTexture(isPlus ? TEX_PLUS : TEX_MINUS)
       },
     }
   }
@@ -346,7 +369,7 @@ export function createScene(canvas) {
   const BATT_Y = 0.13
   const BATT_Z = 1.18
   const BATT_HALF = 0.24
-  const circuit = { wires: [], terminals: [] }
+  const circuit = { wires: [], terminals: [], labels: [] }
   {
     const body = new THREE.Mesh(
       new THREE.CylinderGeometry(0.1, 0.1, BATT_HALF * 2, 18),
@@ -377,6 +400,11 @@ export function createScene(canvas) {
       wire.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), to.clone().sub(from).normalize())
       motorScene.add(wire)
 
+      // 어느 쪽이 +극인지 글자로 분명히 보여 준다 — 전류가 어디서 나와 어디로 들어가는지
+      // 읽으려면 색만으로는 부족하다. 전지 옆(바깥쪽 위)에 띄워 회로를 가리지 않게 한다.
+      circuit.labels.push(
+        makeTerminalLabel(motorScene, sx * (BATT_HALF + 0.02), BATT_Y + 0.21, BATT_Z),
+      )
       circuit.terminals.push(cap)
       circuit.wires.push({ mesh: wire, from, to, sx })
     }
@@ -521,11 +549,12 @@ export function createScene(canvas) {
       // 빨강 = 전류가 나오는 쪽(+), 파랑 = 전류가 들어가는 쪽(−).
       const broken = isCommutatorBreak(model)
       circuit.terminals.forEach((cap, i) => {
-        const isPlus = (i === 0) === model.direction > 0
+        const isPlus = (i === 0) === (model.direction > 0)
         cap.material.color.set(isPlus ? '#dc2626' : '#1d4ed8')
+        circuit.labels[i].setPlus(isPlus)
       })
       circuit.wires.forEach((w, i) => {
-        const isPlus = (i === 0) === model.direction > 0
+        const isPlus = (i === 0) === (model.direction > 0)
         // 정류자 틈이 브러시에 온 순간에는 회로가 끊겨 있다 — 도선을 회색으로 죽여서
         // "지금은 전류가 흐르지 않는다"를 한눈에 보이게 한다.
         const live = on && !broken
@@ -557,7 +586,7 @@ export function createScene(canvas) {
         // 정류자가 끊겨 있는 동안에는 아예 안 흐르므로 화살표도 감춘다.
         if (!broken) {
           circuit.wires.forEach((w, i) => {
-            const isPlus = (i === 0) === model.direction > 0
+            const isPlus = (i === 0) === (model.direction > 0)
             // +단자에서는 브러시 쪽으로, −단자에서는 전지 쪽으로 흐른다
             const from = isPlus ? w.from : w.to
             const to = isPlus ? w.to : w.from
