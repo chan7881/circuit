@@ -11,20 +11,22 @@
  * 전기 기구 목록.
  *
  * `watt`는 실제 가정용 기기의 대표값에 가깝게 잡았다(정확한 제품 사양이 아니라 비교용 어림값).
- * `standby`는 꺼도 흘러나가는 대기 전력 — 코드를 꽂아만 둬도 쓰이는 전기다. 리모컨으로 끄는
- * 기기와 어댑터가 달린 기기에만 있고, 스위치로 완전히 끊는 기기(전등·선풍기·다리미)는 0이다.
+ * `standby`는 꺼도 흘러나가는 대기 전력 — 코드를 꽂아만 둬도 쓰이는 전기다.
+ * **모든 기구에 있다**(2026-08-07 사용자 지시). 코드를 뽑지 않는 한 크든 작든 새어 나가는데,
+ * 일부만 0으로 두면 "이 기구는 꽂아 둬도 전기를 안 쓴다"는 오해를 준다. 크기는 기기 성격에
+ * 맞게 다르게 잡았다 — 리모컨·어댑터가 달린 기기가 크고, 스위치로 끊는 기기는 작다.
  *
  * `energy`는 '주로 어떤 에너지로 바뀌는가'다. **기본 화면에서는 감춘다** — 학습지에서 학생이
  * 직접 채워야 하는 칸이라 처음부터 보여주면 답을 알려주는 꼴이 된다('에너지 전환 보기' 토글).
  */
 export const APPLIANCES = [
-  { id: 'led', name: 'LED 전등', watt: 8, standby: 0, energy: '빛' },
-  { id: 'incandescent', name: '백열전구', watt: 60, standby: 0, energy: '빛과 열' },
+  { id: 'led', name: 'LED 전등', watt: 8, standby: 0.3, energy: '빛' },
+  { id: 'incandescent', name: '백열전구', watt: 60, standby: 0.2, energy: '빛과 열' },
   { id: 'charger', name: '휴대폰 충전기', watt: 5, standby: 1, energy: '화학' },
-  { id: 'fan', name: '선풍기', watt: 50, standby: 0, energy: '운동' },
-  { id: 'fridge', name: '냉장고', watt: 40, standby: 0, energy: '운동과 열' },
+  { id: 'fan', name: '선풍기', watt: 50, standby: 0.8, energy: '운동' },
+  { id: 'fridge', name: '냉장고', watt: 40, standby: 1.5, energy: '운동과 열' },
   { id: 'tv', name: 'TV', watt: 100, standby: 2, energy: '빛과 소리' },
-  { id: 'iron', name: '전기다리미', watt: 1200, standby: 0, energy: '열' },
+  { id: 'iron', name: '전기다리미', watt: 1200, standby: 0.5, energy: '열' },
   { id: 'aircon', name: '에어컨', watt: 1800, standby: 3, energy: '열과 운동' },
 ]
 

@@ -497,12 +497,34 @@ function drawOuterWalls(ctx, g) {
  * 방 칸막이 — 낮게 세워 기구를 가리지 않는다. 문을 내어 방끼리 이어진 것처럼 보이게 한다.
  * ⚠️ **바닥을 칠한 뒤에** 그려야 한다. 먼저 그리면 방바닥이 그 위를 덮어 칸막이가 사라진다.
  */
-function drawPartitions(ctx, g) {
+const PARTITIONS = [
+  { u0: 190, v0: 0, u1: 190, v1: 150, opening: ['door', 0.35, 0.62] },
+  { u0: 0, v0: 150, u1: 190, v1: 150, opening: ['door', 0.4, 0.68] },
+  { u0: 190, v0: 135, u1: 420, v1: 135, opening: ['door', 0.3, 0.55] },
+  { u0: 190, v0: 150, u1: 190, v1: 330, opening: null },
+]
+
+/**
+ * 칸막이와 가구를 **깊이 순으로 섞어서** 그린다.
+ *
+ * 둘을 따로 그리면 어느 한쪽이 늘 위로 올라간다 — 가구를 나중에 그렸더니 벽 앞에 있어야 할
+ * 이유가 없는 가구까지 벽 위에 얹혔다(2026-08-07 사용자 지적). 조감도에서는 **앞에 있는 것
+ * (u+v가 큰 것)이 뒤에 있는 것을 가려야** 하므로, 둘을 한 목록에 넣고 깊이로 정렬해 그린다.
+ */
+function drawPartitionsAndFurniture(ctx, g) {
+  const items = [
+    ...PARTITIONS.map((w) => ({
+      depth: (w.u0 + w.u1) / 2 + (w.v0 + w.v1) / 2,
+      draw: () => drawWall(ctx, g, w.u0, w.v0, w.u1, w.v1, PARTITION_H, w.opening),
+    })),
+    ...FURNITURE.map((f) => ({
+      depth: f.u + f.v,
+      draw: () => drawFurniture(ctx, g, f),
+    })),
+  ]
+  items.sort((a, b) => a.depth - b.depth)
   ctx.save()
-  drawWall(ctx, g, 190, 0, 190, 150, PARTITION_H, ['door', 0.35, 0.62])
-  drawWall(ctx, g, 0, 150, 190, 150, PARTITION_H, ['door', 0.4, 0.68])
-  drawWall(ctx, g, 190, 135, 420, 135, PARTITION_H, ['door', 0.3, 0.55])
-  drawWall(ctx, g, 190, 150, 190, 330, PARTITION_H, null)
+  for (const it of items) it.draw()
   ctx.restore()
 }
 
@@ -536,25 +558,65 @@ function drawPanel(ctx, g, anyOn) {
   ctx.restore()
 }
 
-/** 전선 — 배전반에서 기구로. 켜지면 굵고 노랗게, 전기가 흐르는 것이 점으로 보인다. */
-function drawWire(ctx, from, to, on, thickness, time, phase) {
+/**
+ * 배전반에서 기구까지 전선이 지나갈 길(바닥 좌표).
+ *
+ * **바닥의 가로(u)·세로(v) 방향으로만 꺾어서** 간다 — 조감도에서는 이 두 방향이 곧 벽과
+ * 나란한 방향이라, 실제로 벽을 타고 배선한 것처럼 보인다. 비스듬한 직선으로 이으면
+ * 방을 가로질러 날아가는 선이 되어 배선처럼 보이지 않는다(2026-08-07 사용자 지적).
+ *
+ * 여러 전선이 같은 자리를 지나면 굵은 선이 얇은 선을 덮어 버리므로, 기구마다 **자기 차선**을
+ * 준다. 안쪽(v가 작은) 기구일수록 더 안쪽 차선을 써서 서로 엇갈리지 않는다.
+ */
+function wirePath(id) {
+  const p = PLACES[id]
+  const order = Object.entries(PLACES)
+    .sort((a, b) => b[1].v - a[1].v)
+    .map(([k]) => k)
+  const lane = PANEL.v - order.indexOf(id) * 6
+  return [
+    { u: PANEL.u, v: PANEL.v },
+    { u: PANEL.u, v: lane },
+    { u: p.u, v: lane },
+    { u: p.u, v: p.v },
+  ]
+}
+
+/** 전선 — 켜지면 굵고 노랗게, 전기가 흐르는 것이 점으로 보인다. */
+function drawWire(ctx, g, floorPts, on, thickness, time, phase) {
+  const pts = floorPts.map((q) => project(g, q.u, q.v))
   ctx.save()
   ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
   ctx.strokeStyle = on ? WIRE_ON : WIRE_OFF
   ctx.lineWidth = on ? thickness : 1.8
   ctx.beginPath()
-  ctx.moveTo(from.x, from.y)
-  ctx.lineTo(to.x, to.y)
+  ctx.moveTo(pts[0].x, pts[0].y)
+  for (const q of pts.slice(1)) ctx.lineTo(q.x, q.y)
   ctx.stroke()
+
   if (on) {
-    const len = Math.hypot(to.x - from.x, to.y - from.y)
+    const segs = []
+    let total = 0
+    for (let i = 1; i < pts.length; i++) {
+      const len = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y)
+      if (len > 0) segs.push({ a: pts[i - 1], b: pts[i], len })
+      total += len
+    }
     ctx.fillStyle = '#fff7ed'
     const spacing = 32
-    for (let d = (time * 58 + phase) % spacing; d < len; d += spacing) {
-      const t = d / len
-      ctx.beginPath()
-      ctx.arc(from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t, thickness * 0.4, 0, Math.PI * 2)
-      ctx.fill()
+    for (let d = (time * 58 + phase) % spacing; d < total; d += spacing) {
+      let rest = d
+      for (const s of segs) {
+        if (rest <= s.len) {
+          const t = rest / s.len
+          ctx.beginPath()
+          ctx.arc(s.a.x + (s.b.x - s.a.x) * t, s.a.y + (s.b.y - s.a.y) * t, thickness * 0.4, 0, Math.PI * 2)
+          ctx.fill()
+          break
+        }
+        rest -= s.len
+      }
     }
   }
   ctx.restore()
@@ -623,16 +685,14 @@ export function drawHome(ctx, cssWidth, cssHeight, model, state) {
 
   drawOuterWalls(ctx, g)
   drawFloor(ctx, g)
-  drawPartitions(ctx, g) // 바닥 뒤에 그려야 덮이지 않는다
-  for (const f of FURNITURE) drawFurniture(ctx, g, f)
-  drawRoomNames(ctx, g) // 가구 뒤에 그려야 가구에 가리지 않는다
+  drawPartitionsAndFurniture(ctx, g) // 바닥 뒤에, 서로는 깊이 순으로
+  drawRoomNames(ctx, g) // 가구·벽 뒤에 그려야 가리지 않는다
 
-  const panelPt = project(g, PANEL.u, PANEL.v)
   list.forEach((s, i) => {
     const a = APPLIANCES.find((x) => x.id === s.id)
     const on = isOn(model, s.id)
     const thickness = 2.5 + 4.5 * (Math.log(a.watt + 1) / Math.log(maxW + 1))
-    drawWire(ctx, panelPt, { x: s.x, y: s.y }, on, thickness, time, i * 9)
+    drawWire(ctx, g, wirePath(s.id), on, thickness, time, i * 9)
   })
   drawPanel(ctx, g, anyOn)
 

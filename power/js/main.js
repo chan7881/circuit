@@ -50,14 +50,17 @@ function describeHouse() {
 function syncHome() {
   describeHouse()
   const watt = totalWatt(model)
-  document.getElementById('t-watt').textContent = `${watt.toLocaleString('ko-KR')} W`
+  // 대기 전력이 0.3 W처럼 소수라 합계도 소수가 된다 — 부동소수점 찌꺼기(55.50000000000001)가
+  // 그대로 보이지 않게 자릿수를 정해 준다.
+  const fmtW = (v) => v.toLocaleString('ko-KR', { maximumFractionDigits: 1 })
+  document.getElementById('t-watt').textContent = `${fmtW(watt)} W`
   // 1시간 전력량은 0.048 kWh처럼 작은 값이라 소수점을 살려야 한다(반올림하면 0이 되어 버린다)
   document.getElementById('t-kwh').textContent = `${kwhPerHour(model).toLocaleString('ko-KR', { maximumFractionDigits: 3 })} kWh`
   document.getElementById('t-won').textContent = `${wonPerMonth(model).toLocaleString('ko-KR')} 원`
   document.getElementById('t-bar').style.width = `${Math.min(100, (watt / maxWatt()) * 100)}%`
 
   const leak = standbyWatt(model)
-  document.getElementById('t-note').textContent = leak > 0 ? `그중 꺼 놓은 기구에서 ${leak} W` : ''
+  document.getElementById('t-note').textContent = leak > 0 ? `그중 꺼 놓은 기구에서 ${fmtW(leak)} W` : ''
 
   btnStandby.classList.toggle('selected', model.countStandby)
   btnEnergy.classList.toggle('selected', state.showEnergy)

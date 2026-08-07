@@ -155,8 +155,8 @@ function close(actual, expected, label, tol = 1e-9) {
   )
   assert(APPLIANCES.length >= 6, '비교할 기구가 6가지 이상이다')
   assert(
-    APPLIANCES.some((a) => a.standby === 0),
-    '대기 전력이 없는 기구도 있다(스위치로 완전히 끊는 기구)',
+    APPLIANCES.every((a) => a.standby > 0),
+    '모든 기구에 대기 전력이 있다(코드를 꽂아 두면 크든 작든 전기가 샌다)',
   )
 })()
 
