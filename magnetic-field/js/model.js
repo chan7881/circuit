@@ -67,33 +67,68 @@ export function currentLevel(model) {
 export const EARTH_FIELD = { x: 1, y: 0 }
 export const EARTH_MAGNITUDE = 1
 
-// ── 코일(자석 비유) 모델 ─────────────────────────────────────────────
+// ── 코일 모델 ────────────────────────────────────────────────────────
 //
-// 실제 자기 쌍극자 공식(정확히는 막대자석 하나가 만드는 장과 같은 형태)을 그대로 쓴다 —
-// 계수만 임의로 잡았을 뿐 방향·모양은 진짜 자석 자기력선과 같다. 코일 축을 화면의 가로
-// 방향(x축)으로 두고, 전류 방향이 바뀌면 어느 쪽이 N극인지가 뒤집힌다.
+// 코일을 **한 점의 자기 쌍극자**로 근사하지 않고, 실제로 감긴 고리 5개의 전류를
+// **비오-사바르 법칙으로 적분해서** 자기장을 구한다. 코일 축은 화면의 가로 방향(x축)이고,
+// 전류 방향이 바뀌면 어느 쪽이 N극인지가 뒤집힌다.
+//
+// 왜 근사를 버렸나: 쌍극자 근사는 코일에서 충분히 멀 때만 맞는데, 나침반이 놓인 자리에서도
+// 실제 장과 방향이 최대 **25.7°** 나 어긋났다. 그 상태에서 자기력선을 실제 모양대로 그리면
+// 나침반 바늘이 자기력선을 따라가지 않는 것처럼 보인다 — 학생이 관찰로 규칙을 찾아내야 하는
+// 시뮬레이터에서 이건 그냥 틀린 그림이다(2026-08-07 사용자 피드백).
+//
+// ⚠️ 성취기준 [9과14-04]가 요구하는 것은 여전히 **정성적** 확인이다. 정확한 적분을 쓰는 건
+//    "얼마나 센가"를 계산시키려는 게 아니라, 눈에 보이는 그림이 실제와 어긋나지 않게 하려는
+//    것이다. 세기의 절대값은 여전히 임의 계수(COIL_FIELD_SCALE)로 맞춘다.
 
-const COIL_MOMENT_SCALE = 4000000
-/** 이보다 가까운 거리는 이 값으로 잘라 쓴다 — 안 그러면 코일 바로 옆에서 세기가 무한대로 튄다. */
+export const COIL_RADIUS = 26 // 고리 반지름
+export const COIL_HALF_LEN = 62 // 코일 반길이
+export const COIL_LOOPS = 5 // 감은 고리 수
+const LOOP_SEGMENTS = 24 // 고리 하나를 몇 조각으로 나눠 적분할지
+/** 지구 자기장(=1)과 견줄 만한 크기가 되도록 맞춘 계수 — 물리적 의미는 없다. */
+const COIL_FIELD_SCALE = 700
+/** 도선 바로 위에서 값이 무한대로 튀지 않게 하는 최소 거리² */
+const SOFTEN_R2 = 9
+
+/** 이보다 가까운 거리는 이 값으로 잘라 쓴다 — 직선 도선 모델이 쓴다. */
 const MIN_DIST = 34
 
-/** 코일(원점, 축이 x방향인 자기 쌍극자)이 점 p(코일 중심 기준 상대 좌표)에 만드는 자기장 벡터 */
+/**
+ * 코일(중심이 원점, 축이 x방향)이 점 p에 만드는 자기장 벡터.
+ * 코일은 축 대칭이라 p.y는 "축에서 떨어진 거리"로 보면 되고, 부호는 그대로 따라간다.
+ */
 export function coilFieldAt(model, p) {
   const level = currentLevel(model)
   if (level === 0) return { x: 0, y: 0 }
 
-  const moment = model.direction * level * COIL_MOMENT_SCALE
-  const rawDist = Math.hypot(p.x, p.y)
-  const dist = Math.max(MIN_DIST, rawDist)
-  const rx = p.x / (rawDist || 1)
-  const ry = p.y / (rawDist || 1)
-  // 쌍극자 공식: B = (3(m·r̂)r̂ − m) / dist³ , m = moment * (1, 0)
-  const dot = moment * rx // m·r̂ (m이 x축 방향이라 x성분만 남는다)
-  const k = 1 / (dist * dist * dist)
-  return {
-    x: k * (3 * dot * rx - moment),
-    y: k * (3 * dot * ry),
+  const rho = Math.abs(p.y)
+  const sign = p.y < 0 ? -1 : 1
+  let bx = 0
+  let br = 0
+  const dphi = (Math.PI * 2) / LOOP_SEGMENTS
+  for (let i = 0; i < COIL_LOOPS; i++) {
+    const x0 = -COIL_HALF_LEN + ((COIL_HALF_LEN * 2) / (COIL_LOOPS - 1)) * i
+    for (let k = 0; k < LOOP_SEGMENTS; k++) {
+      const phi = (k + 0.5) * dphi
+      const cs = Math.cos(phi)
+      const sn = Math.sin(phi)
+      // 전류 조각 dl = a·dφ·(0, −sinφ, cosφ), 그 위치 s = (x0, a·cosφ, a·sinφ)
+      const dly = -COIL_RADIUS * sn * dphi
+      const dlz = COIL_RADIUS * cs * dphi
+      // 재는 점을 (p.x, rho, 0)으로 두면 축 대칭이라 일반성을 잃지 않는다
+      const rx = p.x - x0
+      const ry = rho - COIL_RADIUS * cs
+      const rz = -COIL_RADIUS * sn
+      const r2 = Math.max(rx * rx + ry * ry + rz * rz, SOFTEN_R2)
+      const r3 = r2 * Math.sqrt(r2)
+      // (dl × r)의 x성분과 반지름 방향 성분. 나머지 성분은 한 바퀴 돌면 상쇄된다.
+      bx += (dly * rz - dlz * ry) / r3
+      br += (dlz * rx) / r3
+    }
   }
+  const k = model.direction * level * COIL_FIELD_SCALE
+  return { x: k * bx, y: k * sign * br }
 }
 
 // ── 직선 도선 모델 ────────────────────────────────────────────────────

@@ -14,7 +14,7 @@
 
 import * as THREE from 'three'
 import { OrbitControls } from '../../vendor/three/OrbitControls.js'
-import { coilFieldAt, currentLevel } from './model.js'
+import { currentLevel, coilFieldAt, COIL_RADIUS as COIL_A_MODEL } from './model.js'
 
 /** 모델 좌표계 단위 → 3D 장면 단위(대략 미터 느낌) 환산 비율 */
 export const MODEL_SCALE = 60
@@ -95,13 +95,11 @@ export function createScene(canvas) {
   }
 
   // ── 코일 ──
+  //
+  // 고리 안에 심지(막대)를 두지 않는다. 이 모델의 코일은 **속이 빈 공기 코일**이고, 쇠막대를
+  // 그려 두면 "철심이 있어야 자기장이 생긴다"는 엉뚱한 인상을 줄 수 있다. 고리만으로도
+  // 코일이라는 게 충분히 읽힌다(2026-08-07 사용자 피드백).
   const coilGroup = new THREE.Group()
-  const core = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.05, 0.05, COIL_HALF_LEN * 2, 16),
-    new THREE.MeshStandardMaterial({ color: '#cbd5e1' }),
-  )
-  core.rotation.z = Math.PI / 2
-  coilGroup.add(core)
 
   const loopMat = new THREE.MeshStandardMaterial({ color: '#92400e' })
   const coilArrows = []
@@ -135,12 +133,12 @@ export function createScene(canvas) {
   )
   wireGroup.add(wire)
   const wireArrows = []
-  // 도선이 길어진 만큼 화살표도 여러 개를 늘어놓아, 어느 높이에서 봐도 전류 방향을 읽을 수
-  // 있게 한다. 도선과 같은 축이라 도선보다 굵게 만든다. 실험대 아래는 상판에 가려 보이지
-  // 않으므로 전부 상판 위쪽에 둔다.
-  for (const y of [0.15, 0.95, 1.75, 2.55]) {
-    const arrow = makeArrowMesh(WIRE_R * 1.5, 0.5, CURRENT_COLOR)
-    arrow.position.y = y
+  // 전류 방향 화살표는 **하나만** 크게 둔다 — 여러 개를 늘어놓으면 도선을 가리기만 하고
+  // 읽히는 정보는 같다(2026-08-07 사용자 피드백). 도선과 같은 축이라 도선보다 굵게 만들고,
+  // 실험대 아래는 상판에 가려 보이지 않으므로 상판 위쪽에 둔다.
+  {
+    const arrow = makeArrowMesh(WIRE_R * 1.5, 1.0, CURRENT_COLOR)
+    arrow.position.y = 0.85
     wireArrows.push(arrow)
     wireGroup.add(arrow)
   }
@@ -184,17 +182,41 @@ export function createScene(canvas) {
   const fieldLineMat = new THREE.LineBasicMaterial({ color: FIELD_LINE_COLOR, transparent: true, opacity: 0.45 })
   let lastFieldKey = ''
 
-  /** 코일(쌍극자) 자기력선 하나를 시작점에서 field 방향을 따라가며 추적한다(2D, 모델 좌표) */
-  function traceCoilFieldLine(model, start, maxSteps = 240, stepSize = 4) {
-    const pts = [start]
-    let p = start
-    for (let i = 0; i < maxSteps; i++) {
-      const f = coilFieldAt(model, p)
-      const mag = Math.hypot(f.x, f.y)
-      if (mag < 1e-6) break
-      p = { x: p.x + (f.x / mag) * stepSize, y: p.y + (f.y / mag) * stepSize }
-      pts.push(p)
-      if (Math.hypot(p.x, p.y) > 300) break
+  /**
+   * 코일 속 반지름 seedR에서 출발해, 가운데 평면(x=0)으로 되돌아올 때까지 자기장을 따라간다.
+   * 돌아온 시점이 자기력선의 '반쪽'이다 — 나머지 반쪽은 거울로 만든다.
+   *
+   * 자기장은 **model.js의 coilFieldAt()을 그대로** 쓴다. 나침반이 보는 장과 자기력선이
+   * 같은 계산에서 나와야 둘이 어긋나지 않는다.
+   */
+  function traceCoilFieldLineHalf(model, seedR) {
+    const STEP = 2.5
+    const MAX_STEPS = 1200
+    const MAX_R = 320
+    const pts = []
+    let x = 0
+    let r = seedR
+    // 코일 속에서는 자기장이 축과 나란하다. 항상 +x 쪽으로 먼저 가도록 부호를 맞춘다.
+    const seed = coilFieldAt(model, { x: 0, y: seedR })
+    const flip = seed.x < 0 ? -1 : 1
+    for (let i = 0; i < MAX_STEPS; i++) {
+      pts.push({ x, y: r })
+      // 중점법(RK2) — 오일러법보다 곡선을 훨씬 덜 벗어난다
+      const f1 = coilFieldAt(model, { x, y: r })
+      const m1 = Math.hypot(f1.x, f1.y)
+      if (m1 < 1e-12) break
+      const xh = x + ((flip * f1.x) / m1) * (STEP / 2)
+      const rh = r + ((flip * f1.y) / m1) * (STEP / 2)
+      const f2 = coilFieldAt(model, { x: xh, y: Math.abs(rh) })
+      const m2 = Math.hypot(f2.x, f2.y)
+      if (m2 < 1e-12) break
+      x += ((flip * f2.x) / m2) * STEP
+      r += ((flip * f2.y) / m2) * STEP
+      if (r < 0 || Math.hypot(x, r) > MAX_R) break
+      if (i > 4 && x <= 0) {
+        pts.push({ x: 0, y: r }) // 가운데 평면에 정확히 맞춰 닫아 준다
+        break
+      }
     }
     return pts
   }
@@ -206,20 +228,32 @@ export function createScene(canvas) {
     if (!showFieldLines || currentLevel(model) <= 0) return
 
     if (model.mode === 'coil') {
-      // 2D 단면 자기력선을 코일 축(X) 둘레 여러 방위각으로 복제해 3D 꽃잎 모양을 만든다 —
-      // 쌍극자 자기장은 축 대칭이라 어느 방위각에서 봐도 같은 모양의 단면을 가진다.
+      // 실제 코일(고리 5개)이 만드는 자기장을 **비오-사바르 법칙으로 직접 적분해서** 그 장을
+      // 따라가며 자기력선을 그린다. 그래야 코일 속을 축과 나란히 지나가다가 끝에서 빠져나와
+      // 바깥으로 크게 돌아 반대쪽 끝으로 들어가는, **실제 코일의 자기력선 모양**이 나온다.
       //
-      // 시작점은 코일 축(원점)에서 본 각도(극각)가 어느 정도 커야(30°~85°) 자기력선이 화면
-      // 안에서 둥글게 휘어 돌아오는 고리 모양을 보인다 — 극에 아주 가까운 각도로 시작하면
-      // 고리 반지름이 너무 커져(r ∝ 1/sin²θ) 화면 밖으로 거의 직선처럼 빠져나가 버린다.
-      const poleSign = model.direction > 0 ? 1 : -1
-      const startR = 40
-      const baseAngles = [30, 50, 70, 85]
+      // (점 쌍극자 공식 r = L·sin²θ 도 써 봤지만, 그건 코일을 한 점으로 본 것이라 모든 선이
+      //  코일 한가운데 한 점으로 모여 버려서 실제 코일 모습과 달랐다 — 2026-08-07 피드백.)
+      //
+      // 좌우 대칭은 **가운데 평면에서 한쪽만 따라간 뒤 거울로 뒤집어** 보장한다. 코일이 x=0에
+      // 대해 대칭이니 자기력선도 대칭이어야 하는데, 양쪽을 따로 적분하면 반올림 오차가 쌓여
+      // 미세하게 어긋난다.
       const azimuths = [0, Math.PI / 3, (2 * Math.PI) / 3, Math.PI, (4 * Math.PI) / 3, (5 * Math.PI) / 3]
-      for (const deg of baseAngles) {
-        const rad = (deg * Math.PI) / 180
-        const start = { x: poleSign * startR * Math.cos(rad), y: startR * Math.sin(rad) }
-        const pts2d = traceCoilFieldLine(model, start)
+      // 코일 속(구멍) 여러 반지름에서 출발시킨다 — 코일을 관통하는 선들이 실제 모습의 핵심이다.
+      // 출발 반지름이 축에 가까울수록 자기력선이 훨씬 크게 돈다. 네 개가 고르게 겹쳐 보이면서
+      // 가장 바깥 것도 실험대를 크게 벗어나지 않는 값으로 골랐다(추적해 확인: 최대 반지름이
+      // 각각 약 239·158·103·47 — 모델 좌표).
+      const seeds = [0.55, 0.65, 0.75, 0.85].map((f) => f * COIL_A_MODEL)
+      for (const seedR of seeds) {
+        const half = traceCoilFieldLineHalf(model, seedR)
+        if (half.length < 2) continue
+        // 따라간 반쪽 + 거울로 뒤집은 반쪽 = 좌우 대칭인 닫힌 고리
+        const pts2d = half.concat(
+          half
+            .slice(0, -1)
+            .reverse()
+            .map((p) => ({ x: -p.x, y: p.y })),
+        )
         for (const az of azimuths) {
           const points = pts2d.map(
             (pt) =>
