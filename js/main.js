@@ -5,7 +5,9 @@ import {
   COMPONENT_TYPES,
   PALETTE_ORDER,
   COMPONENT_COLOR,
-  BULB_R,
+  bulbResistance,
+  bulbRatedPower,
+  BULB_OVERPOWER_RATIO,
   FLOW_MODE_CURRENT,
   FLOW_MODE_ELECTRON,
 } from './config.js'
@@ -224,16 +226,23 @@ function openSheet(item) {
       })
       sheetBody.appendChild(b)
     }
-  } else if (item.type === 'ammeter' || item.type === 'voltmeter') {
-    const info = document.createElement('div')
-    info.className = 'sheet-info'
-    sheetBody.appendChild(info)
-    updateMeterInfo(info, item)
-  } else if (item.type === 'bulb') {
+  }
+
+  // ⚠️ 값 버튼과 정보 표시는 **둘 다** 나와야 한다.
+  //    전구에 options 를 붙이면서 else-if 사슬 때문에 정보 표시가 통째로 사라졌었다
+  //    (2026-08-26). 값을 고를 수 있는 부품이라고 해서 상태를 안 보여 줄 이유가 없다.
+  if (item.type === 'bulb') {
     const info = document.createElement('div')
     info.className = 'sheet-info'
     sheetBody.appendChild(info)
     updateBulbInfo(info, item)
+  }
+
+  if (item.type === 'ammeter' || item.type === 'voltmeter') {
+    const info = document.createElement('div')
+    info.className = 'sheet-info'
+    sheetBody.appendChild(info)
+    updateMeterInfo(info, item)
   } else if (item.type === 'switch') {
     const info = document.createElement('div')
     info.textContent = item.closed ? '지금 닫혀 있어요 (전류가 흘러요)' : '지금 열려 있어요 (전류가 끊겨요)'
@@ -258,8 +267,18 @@ function updateMeterInfo(el, item) {
 
 function updateBulbInfo(el, item) {
   const current = Math.abs(solveResult.current.get(item.uid) ?? 0)
-  const power = current * current * BULB_R
-  el.textContent = `전류: ${current.toFixed(3)} A · 소비전력: ${power.toFixed(2)} W`
+  const R = bulbResistance(item.value)
+  const rated = bulbRatedPower(item.value)
+  const power = current * current * R
+  const ratio = power / rated
+  // 규격과 함께 보여 준다 — «0.9W» 라는 숫자만으로는 센지 약한지 알 수 없다.
+  let state = ''
+  if (ratio > BULB_OVERPOWER_RATIO) state = ' · 과전류! 끊어질 위험'
+  else if (ratio > 1) state = ' · 과전류'
+  el.textContent =
+    `규격: ${item.value}V (${R.toFixed(0)}Ω · ${rated.toFixed(2)}W) · ` +
+    `전류: ${current.toFixed(3)} A · 소비전력: ${power.toFixed(2)} W` +
+    ` (정격의 ${(ratio * 100).toFixed(0)}%)${state}`
 }
 
 function closeSheet() {

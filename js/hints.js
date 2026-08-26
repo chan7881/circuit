@@ -6,8 +6,8 @@ import {
   SHORT_CIRCUIT_CURRENT,
   ZERO_CURRENT_EPS,
   SERIES_VOLTMETER_CURRENT_EPS,
-  BULB_R,
-  BULB_RATED_POWER,
+  bulbResistance,
+  bulbRatedPower,
   BULB_OVERPOWER_RATIO,
 } from './config.js'
 
@@ -60,12 +60,25 @@ export function diagnose(model, solveResult) {
     return { level: 'error', message: '합선이에요! 전지 양 끝이 부품 없이 바로 이어졌어요.' }
   }
 
-  const overpowerBulb = bulbs.some((bulb) => {
+  // 전구마다 규격이 다르다 — 자기 규격에 견줘 판단한다.
+  // 정격을 넘으면 «과전류», 정격의 BULB_OVERPOWER_RATIO 배를 넘으면 «끊어질 만큼 위험».
+  const ratios = bulbs.map((bulb) => {
     const i = current.get(bulb.uid) ?? 0
-    return i * i * BULB_R > BULB_RATED_POWER * BULB_OVERPOWER_RATIO
+    const p = i * i * bulbResistance(bulb.value)
+    return p / bulbRatedPower(bulb.value)
   })
-  if (overpowerBulb) {
-    return { level: 'warn', message: '전구에 너무 센 전류가 흘러요. 전압을 낮추거나 저항을 넣어 보세요.' }
+  const worst = ratios.length ? Math.max(...ratios) : 0
+  if (worst > BULB_OVERPOWER_RATIO) {
+    return {
+      level: 'error',
+      message: '전구가 규격보다 훨씬 센 전류를 받고 있어요. 이대로면 끊어져요 — 전압을 낮추거나 저항을 넣어 보세요.',
+    }
+  }
+  if (worst > 1) {
+    return {
+      level: 'warn',
+      message: '전구 규격보다 센 전류가 흐르고 있어요(과전류). 규격이 더 큰 전구로 바꾸거나 전압을 낮춰 보세요.',
+    }
   }
 
   return null

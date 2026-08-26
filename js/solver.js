@@ -14,7 +14,7 @@ import {
   SWITCH_CLOSED_R,
   AMMETER_R,
   VOLTMETER_R,
-  BULB_R,
+  bulbResistance,
 } from './config.js'
 
 const NODE_COUNT = GRID_COLS * GRID_ROWS
@@ -29,7 +29,8 @@ function localModel(item, u, v) {
     case 'resistor':
       return { p: u, q: v, G: 1 / item.value, Isrc: 0 }
     case 'bulb':
-      return { p: u, q: v, G: 1 / BULB_R, Isrc: 0 }
+      // 규격(정격 전압)에 따라 저항이 달라진다 — R = V정격 / 0.3A
+      return { p: u, q: v, G: 1 / bulbResistance(item.value), Isrc: 0 }
     case 'switch':
       return item.closed ? { p: u, q: v, G: 1 / SWITCH_CLOSED_R, Isrc: 0 } : { p: u, q: v, G: 0, Isrc: 0 }
     case 'ammeter':

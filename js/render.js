@@ -12,8 +12,9 @@ import {
   STACK_OFFSET,
   COMPONENT_COLOR,
   ZERO_CURRENT_EPS,
-  BULB_R,
-  BULB_RATED_POWER,
+  bulbResistance,
+  bulbRatedPower,
+  BULB_OVERPOWER_RATIO,
   FLOW_MODE_CURRENT,
   FLOW_MODE_ELECTRON,
   FLOW_PARTICLE_SPACING,
@@ -240,7 +241,7 @@ function drawComponent(ctx, item, p1, p2, current, selected, flowPhase, fullPath
       drawResistor(ctx, p1, p2, color, `${item.value}Ω`)
       break
     case 'bulb':
-      drawBulb(ctx, p1, p2, color, current)
+      drawBulb(ctx, item, p1, p2, color, current)
       break
     case 'switch':
       drawSwitch(ctx, p1, p2, color, item.closed)
@@ -253,8 +254,11 @@ function drawComponent(ctx, item, p1, p2, current, selected, flowPhase, fullPath
       break
   }
 
+  // ⚠️ 흐름 표시는 기호 **위에** 그려진다. 기호 구간까지 입자를 찍으면 전구의 지름선이나
+  //    전지 극판이 입자에 가려 끊겨 보인다(2026-08-26에 전구에서 발견). 리드선을 기호
+  //    경계에서 끊는 것과 같은 이유로, 입자도 기호 구간에서는 건너뛴다.
   if (flowSettings.visible && Math.abs(current) > ZERO_CURRENT_EPS) {
-    drawFlowParticles(ctx, path, current, flowPhase, flowSettings.mode)
+    drawFlowParticles(ctx, path, current, flowPhase, flowSettings.mode, half + 3)
   }
 
   ctx.restore()
@@ -322,13 +326,21 @@ function drawResistor(ctx, p1, p2, color, label) {
   drawLabel(ctx, label, mid(p1, p2), perp, 26)
 }
 
-function drawBulb(ctx, p1, p2, color, current) {
+function drawBulb(ctx, item, p1, p2, color, current) {
   const c = mid(p1, p2)
-  const power = current * current * BULB_R
-  const brightness = Math.max(0, Math.min(1, power / BULB_RATED_POWER))
+  const ratedV = item.value
+  const power = current * current * bulbResistance(ratedV)
+  const ratio = power / bulbRatedPower(ratedV)          // 정격 대비 몇 배인가
+  const brightness = Math.max(0, Math.min(1, ratio))
+  const over = ratio > 1                                 // 과전류
+  const danger = ratio > BULB_OVERPOWER_RATIO            // 끊어질 만큼
+  // 정격을 넘겨도 «더 밝아진다»고 그리지 않는다 — 그건 밝기가 아니라 위험이다.
+  // 다만 얼마나 넘었는지는 빛 번짐 크기로 계속 보이게 해서
+  // «정격 위로는 화면이 아무 변화가 없다»가 되지 않게 한다.
+  const overShoot = Math.max(0, Math.min(2, ratio - 1))
   const r = BULB_RADIUS
   if (brightness > 0.02) {
-    const glowR = r + 18 * brightness
+    const glowR = r + 18 * brightness + 16 * overShoot
     const grad = ctx.createRadialGradient(c.x, c.y, r * 0.4, c.x, c.y, glowR)
     grad.addColorStop(0, `rgba(250, 204, 21, ${0.55 * brightness + 0.15})`)
     grad.addColorStop(1, 'rgba(250, 204, 21, 0)')
@@ -338,8 +350,10 @@ function drawBulb(ctx, p1, p2, color, current) {
     ctx.fill()
   }
   ctx.fillStyle = brightness > 0.02 ? `rgba(254, 240, 138, ${0.4 + 0.6 * brightness})` : '#f8fafc'
-  ctx.strokeStyle = color
-  ctx.lineWidth = 3
+  // ⚠️ 과전류는 색 하나로만 알리지 않는다 — 색 + 굵기 + 글자 세 겹으로 알린다
+  //    (빔프로젝터·색약에서 색만으로는 정보가 사라진다).
+  ctx.strokeStyle = danger ? '#b91c1c' : over ? '#c2410c' : color
+  ctx.lineWidth = over ? 5 : 3
   ctx.beginPath()
   ctx.arc(c.x, c.y, r, 0, Math.PI * 2)
   ctx.fill()
@@ -358,6 +372,14 @@ function drawBulb(ctx, p1, p2, color, current) {
   ctx.moveTo(c.x - ux * r, c.y - uy * r)
   ctx.lineTo(c.x + ux * r, c.y + uy * r)
   ctx.stroke()
+
+  // 규격을 늘 보여 준다 — 어떤 전구인지 모르면 밝기 차이를 해석할 수 없다.
+  // 과전류일 때는 글자로도 알린다(색·굵기에 이어 세 번째 겹).
+  const perp = perpUnit(p1, p2)
+  drawLabel(ctx, `${ratedV}V`, c, perp, 30)
+  if (over) {
+    drawLabel(ctx, danger ? '과전류! 끊어질 위험' : '과전류', c, perp, -30, 14, true)
+  }
 }
 
 function drawSwitch(ctx, p1, p2, color, closed) {
@@ -490,9 +512,11 @@ function drawElectronMark(ctx, x, y, color) {
  * mode='current'면 화살표가 전류 방향(+→−)으로, mode='electron'이면 점(−)이 전자의 실제
  * 이동 방향(−→+, 전류와 반대)으로 움직인다 — 둘은 항상 서로 반대 방향이다.
  */
-function drawFlowParticles(ctx, path, current, flowPhase, mode) {
+function drawFlowParticles(ctx, path, current, flowPhase, mode, skipHalf = 0) {
   const totalLen = pathLength(path)
   if (totalLen < 2) return
+  // 기호는 경로 한가운데에 있다(병렬 스텁은 좌우 대칭이라 중앙이 그대로 기호 중심이다).
+  const centerD = totalLen / 2
   const isElectron = mode === FLOW_MODE_ELECTRON
   const conventionalForward = current > 0
   const forward = isElectron ? !conventionalForward : conventionalForward
@@ -505,6 +529,7 @@ function drawFlowParticles(ctx, path, current, flowPhase, mode) {
   for (let i = 0; i < count; i++) {
     let d = (i * spacing + travel) % totalLen
     if (d < 0) d += totalLen
+    if (skipHalf > 0 && Math.abs(d - centerD) < skipHalf) continue
     const { x, y, angle } = pointAndAngleAtDistance(path, d)
     if (isElectron) drawElectronMark(ctx, x, y, color)
     else drawCurrentArrow(ctx, x, y, forward ? angle : angle + Math.PI, color)

@@ -16,9 +16,26 @@ export const AMMETER_R = 0.0001
 export const BATTERY_INTERNAL_R = 0.001
 export const VOLTMETER_R = 1_000_000
 
-export const BULB_R = 10 // 전구 저항(고정, 선형 모델)
-export const BULB_RATED_POWER = 0.9 // W — 이 전력에서 최대 밝기(포화)
-export const BULB_OVERPOWER_RATIO = 2 // 정격의 이 배수를 넘으면 "너무 센 전류" 힌트
+// --- 전구 ---
+// 전구에는 **규격(정격 전압)** 이 있다. 실제 꼬마전구도 «3V 0.3A» 처럼 적혀 있다.
+// 정격 전류를 0.3A 로 고정하고 규격 전압으로 저항을 정한다: R = V정격 / 0.3
+//   1.5V → 5Ω(0.45W) · 3V → 10Ω(0.9W) · 6V → 20Ω(1.8W)
+// ⚠️ 기본값 3V 는 예전의 고정값(10Ω·0.9W)과 **정확히 같다** — 기존 예제 회로와
+//    계산 결과가 달라지지 않게 일부러 그렇게 골랐다.
+export const BULB_RATED_CURRENT = 0.3 // A
+export const BULB_VOLTAGES = [1.5, 3, 6]
+export const BULB_DEFAULT_VOLTAGE = 3
+
+export function bulbResistance(ratedV) {
+  return (ratedV ?? BULB_DEFAULT_VOLTAGE) / BULB_RATED_CURRENT
+}
+export function bulbRatedPower(ratedV) {
+  return (ratedV ?? BULB_DEFAULT_VOLTAGE) * BULB_RATED_CURRENT
+}
+
+// 정격의 몇 배까지를 어떻게 볼 것인가.
+//  1배 넘으면 «과전류»(경고), 이 배수를 넘으면 «끊어질 만큼 위험».
+export const BULB_OVERPOWER_RATIO = 2
 
 export const SHORT_CIRCUIT_CURRENT = 5 // A — 전지 전류가 이보다 크면 합선 경고
 export const ZERO_CURRENT_EPS = 1e-6 // A — 이보다 작으면 "전류 없음"으로 취급
@@ -36,7 +53,13 @@ export const COMPONENT_TYPES = {
   wire: { label: '도선', category: 'wire' },
   battery: { label: '전지', category: 'source', defaultValue: 3, options: BATTERY_VOLTAGES, unit: 'V' },
   resistor: { label: '저항', category: 'passive', defaultValue: 10, options: RESISTOR_VALUES, unit: 'Ω' },
-  bulb: { label: '전구', category: 'passive' },
+  bulb: {
+    label: '전구',
+    category: 'passive',
+    defaultValue: BULB_DEFAULT_VOLTAGE,
+    options: BULB_VOLTAGES,
+    unit: 'V',
+  },
   switch: { label: '스위치', category: 'switch' },
   ammeter: { label: '전류계', category: 'meter' },
   voltmeter: { label: '전압계', category: 'meter' },
