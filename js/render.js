@@ -344,13 +344,19 @@ function drawBulb(ctx, p1, p2, color, current) {
   ctx.arc(c.x, c.y, r, 0, Math.PI * 2)
   ctx.fill()
   ctx.stroke()
-  // 전구 기호(원 안의 X)
-  const k = r * 0.7
+  // 전구 기호 — 원을 **도선 방향으로 가로지르는 선** 하나.
+  // ⚠️ 원 안의 X 로 그려 두었었다. 그건 교과서 기호가 아니다(2026-08-26 수정).
+  //    교과서의 전구 기호는 «원 + 지름선» 이고, 그 선이 양쪽 리드선과 한 줄로
+  //    이어져 보이도록 도선과 같은 방향으로 긋는다. 부품을 눕히거나 세워도
+  //    리드선과 어긋나지 않게 하려면 화면 가로가 아니라 **도선 축**을 따라야 한다.
+  const dx = p2.x - p1.x
+  const dy = p2.y - p1.y
+  const len = Math.hypot(dx, dy) || 1
+  const ux = dx / len
+  const uy = dy / len
   ctx.beginPath()
-  ctx.moveTo(c.x - k, c.y - k)
-  ctx.lineTo(c.x + k, c.y + k)
-  ctx.moveTo(c.x + k, c.y - k)
-  ctx.lineTo(c.x - k, c.y + k)
+  ctx.moveTo(c.x - ux * r, c.y - uy * r)
+  ctx.lineTo(c.x + ux * r, c.y + uy * r)
   ctx.stroke()
 }
 
