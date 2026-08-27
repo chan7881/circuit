@@ -5,7 +5,13 @@ import { createModel, placeComponentWithValue, allComponents } from './model.js'
 import { solveCircuit } from './solver.js'
 import { diagnose } from './hints.js'
 import { PRESETS, applyPreset } from './presets.js'
-import { WIRE_R, BATTERY_INTERNAL_R } from './config.js'
+import {
+  WIRE_R,
+  BATTERY_INTERNAL_R,
+  flowSpeed,
+  FLOW_PARTICLE_SPACING,
+  FLOW_SPEED_MAX_CURRENT,
+} from './config.js'
 
 const results = []
 
@@ -224,6 +230,44 @@ function batteryUid(model) {
     }
     assert(ok, `프리셋 "${preset.label}" 정상 로드${message ? ' — ' + message : ''}`)
   }
+})()
+
+// --- 전류 흐름 애니메이션이 전류 세기를 반영하는가 -------------------------
+// 판정 기준(이론): 한 점을 지나가는 입자 수/초 = 속도 / 간격.
+//   입자 간격이 고정이므로 이 값이 전류에 **비례**해야 «세기를 반영한다» 고 말할 수 있다.
+//   (I = nqAv 에서 운반자 밀도 n 을 고정하고 표류 속도 v 만 바꾸는 것과 같다)
+// ⚠️ 방향(부호)이 아니라 «세기» 를 보는 검사다. 방향은 drawFlowParticles 의 forward 가 맡는다.
+;(() => {
+  const perSec = (I) => flowSpeed(I) / FLOW_PARTICLE_SPACING
+  const probes = [0.05, 0.1, 0.3, 0.6, 1, 1.8, 3, FLOW_SPEED_MAX_CURRENT]
+  const ratios = probes.map((I) => perSec(I) / I)
+  const spread = Math.max(...ratios) - Math.min(...ratios)
+  assert(spread < 1e-9, `흐름 속도: 상한 아래에서 전류에 정확히 비례 (편차=${spread.toExponential(1)})`)
+
+  // 두 배 전류면 두 배 빠르다 — 비례가 깨지면 여기서 걸린다
+  approx(flowSpeed(0.6) / flowSpeed(0.3), 2, 1e-9, '흐름 속도: 전류 2배면 속도도 2배')
+
+  // 전류가 없으면 멈춘다
+  assert(flowSpeed(0) === 0, '흐름 속도: 전류 0이면 정지')
+
+  // 방향(부호)은 세기에 영향을 주지 않는다 — 부호는 화살표 방향이 따로 표현한다
+  assert(flowSpeed(-0.7) === flowSpeed(0.7), '흐름 속도: 전류 부호는 속도에 영향 없음')
+
+  // ★ 교실에서 만들 수 있는 회로가 상한 안에 들어와야 한다.
+  //   9V + 5Ω 두 개 병렬(=2.5Ω) = 3.6A 는 정상적인 «병렬 연결» 실험이다.
+  //   예전 상한(3A)에서는 이 회로부터 세기를 반영하지 못했다(2026-08-28).
+  const m = createModel()
+  placeComponentWithValue(m, 'v_1_0', 'battery', { value: 9 })
+  placeComponentWithValue(m, 'v_1_2', 'resistor', { value: 5 })
+  placeComponentWithValue(m, 'v_1_2', 'resistor', { value: 5 })
+  wireRest(m, new Set(['v_1_0', 'v_1_2']))
+  const solved = solveCircuit(m)
+  const battery = allComponents(m).find((i) => i.type === 'battery')
+  const Itot = Math.abs(solved.current.get(battery.uid) ?? 0)
+  assert(
+    Itot <= FLOW_SPEED_MAX_CURRENT,
+    `흐름 속도: 교실 회로(9V·5Ω∥5Ω)가 상한 안에 있다 (I=${Itot.toFixed(3)}A ≤ ${FLOW_SPEED_MAX_CURRENT}A)`,
+  )
 })()
 
 export function runAll() {

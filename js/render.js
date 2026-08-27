@@ -18,6 +18,7 @@ import {
   FLOW_MODE_CURRENT,
   FLOW_MODE_ELECTRON,
   FLOW_PARTICLE_SPACING,
+  flowSpeed,
   CURRENT_FLOW_COLOR,
   ELECTRON_FLOW_COLOR,
 } from './config.js'
@@ -537,7 +538,7 @@ function drawFlowParticles(ctx, path, current, flowPhase, mode, skipHalf = 0) {
   const isElectron = mode === FLOW_MODE_ELECTRON
   const conventionalForward = current > 0
   const forward = isElectron ? !conventionalForward : conventionalForward
-  const speed = Math.min(Math.abs(current) * 40, 120)
+  const speed = flowSpeed(current)
   const spacing = FLOW_PARTICLE_SPACING
   const color = isElectron ? ELECTRON_FLOW_COLOR : CURRENT_FLOW_COLOR
   const travel = flowPhase * speed * (forward ? 1 : -1)

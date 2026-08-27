@@ -101,5 +101,22 @@ export const COMPONENT_COLOR = {
 export const FLOW_MODE_CURRENT = 'current'
 export const FLOW_MODE_ELECTRON = 'electron'
 export const FLOW_PARTICLE_SPACING = 26 // 입자(화살표/전자 표시) 사이 간격(논리 단위)
+
+// 흐름 애니메이션의 속도. 입자 간격은 고정이고 **속도만** 전류에 비례시킨다.
+//   한 점을 지나가는 입자 수/초 = 속도 / 간격  →  전류에 비례한다.
+//   (I = nqAv 에서 운반자 밀도 n 을 고정하고 표류 속도 v 만 바꾸는 것과 같다)
+// ⚠️ 상한이 있다. 너무 빠르면 화살표가 뭉개져 방향조차 안 보인다. 다만 상한에 걸리면
+//    그 위로는 전류가 더 세져도 화면이 같아진다 — 어디서 걸리는지는 FLOW_SPEED_MAX_CURRENT.
+export const FLOW_SPEED_PER_AMP = 40 // 논리단위/초 per A
+// 상한을 4A 로 잡은 이유: 교실에서 만들 수 있는 회로가 실제로 3A 를 넘는다.
+// 9V 전지에 5Ω 두 개를 병렬(=2.5Ω)로 걸면 3.6A 다 — 정상적인 «병렬 연결» 실험인데
+// 상한이 3A 면 그 회로부터 세기를 반영하지 못했다(2026-08-28 확인).
+// 4A 위는 합선 경고(5A)와 겹치는 영역이라 실용상 문제되지 않는다.
+export const FLOW_SPEED_CAP = 160 // 논리단위/초
+export const FLOW_SPEED_MAX_CURRENT = FLOW_SPEED_CAP / FLOW_SPEED_PER_AMP // = 4A
+
+export function flowSpeed(current) {
+  return Math.min(Math.abs(current) * FLOW_SPEED_PER_AMP, FLOW_SPEED_CAP)
+}
 export const CURRENT_FLOW_COLOR = '#f59e0b' // 전류 방향 화살표 — 호박색(부품별 강조색과 겹치지 않게)
 export const ELECTRON_FLOW_COLOR = '#2563eb' // 전자 표시 — 파란색(음전하 관례)
