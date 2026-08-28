@@ -11,6 +11,8 @@ import {
   flowSpeed,
   FLOW_PARTICLE_SPACING,
   FLOW_SPEED_MAX_CURRENT,
+  FLOW_SPEED_CAP,
+  FLOW_MIN_FPS,
 } from './config.js'
 
 const results = []
@@ -267,6 +269,16 @@ function batteryUid(model) {
   assert(
     Itot <= FLOW_SPEED_MAX_CURRENT,
     `흐름 속도: 교실 회로(9V·5Ω∥5Ω)가 상한 안에 있다 (I=${Itot.toFixed(3)}A ≤ ${FLOW_SPEED_MAX_CURRENT}A)`,
+  )
+
+  // ★ 바퀴가 거꾸로 도는 착시(에일리어싱)를 막는 부등식.
+  //   한 프레임에 «간격의 절반» 을 넘게 움직이면 흐름이 반대로 보인다.
+  //   학교 기기가 24fps 까지 떨어져도 안전해야 한다.
+  const perFrame = FLOW_SPEED_CAP / FLOW_MIN_FPS
+  assert(
+    perFrame <= FLOW_PARTICLE_SPACING / 2,
+    `흐름 속도: ${FLOW_MIN_FPS}fps 에서도 거꾸로 보이지 않는다 ` +
+      `(프레임당 ${perFrame.toFixed(1)} ≤ 간격절반 ${(FLOW_PARTICLE_SPACING / 2).toFixed(1)})`,
   )
 })()
 

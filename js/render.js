@@ -492,17 +492,16 @@ function pointAndAngleAtDistance(path, d) {
 }
 
 /** 전류 방향 표시: 진행 방향을 가리키는 작은 화살표(전통적인 회로도 관례 — 화살표가 전류 방향). */
-function drawCurrentArrow(ctx, x, y, angle, color) {
-  const size = 6
+// 전류를 «흐르는 알갱이» 로 그린다 — /water-analogy/ 의 물 입자와 같은 방식이다.
+// ⚠️ 예전에는 화살표였다. 바꾼 이유가 둘이다(2026-08-29, 사용자 요청).
+//   ① 물 비유 시뮬레이터와 **같은 그림**이어야 «물의 흐름 ↔ 전류» 대응이 눈에 들어온다.
+//   ② 화살표는 빨라지면 방향이 뭉개져 오히려 못 읽는다. 알갱이는 빨라져도 흐름으로 읽힌다.
+// 방향은 **움직임 자체**가 알려 준다(전류/전자 토글을 누르면 반대로 흐른다).
+function drawFlowDot(ctx, x, y, color) {
   ctx.save()
-  ctx.translate(x, y)
-  ctx.rotate(angle)
   ctx.fillStyle = color
   ctx.beginPath()
-  ctx.moveTo(size, 0)
-  ctx.lineTo(-size * 0.7, size * 0.6)
-  ctx.lineTo(-size * 0.7, -size * 0.6)
-  ctx.closePath()
+  ctx.arc(x, y, 4.5, 0, Math.PI * 2)
   ctx.fill()
   ctx.restore()
 }
@@ -548,8 +547,9 @@ function drawFlowParticles(ctx, path, current, flowPhase, mode, skipHalf = 0) {
     let d = (i * spacing + travel) % totalLen
     if (d < 0) d += totalLen
     if (skipHalf > 0 && Math.abs(d - centerD) < skipHalf) continue
-    const { x, y, angle } = pointAndAngleAtDistance(path, d)
+    // 알갱이는 방향을 그림으로 나타내지 않으므로 각도가 필요 없다 — 흐르는 것으로 보인다.
+    const { x, y } = pointAndAngleAtDistance(path, d)
     if (isElectron) drawElectronMark(ctx, x, y, color)
-    else drawCurrentArrow(ctx, x, y, forward ? angle : angle + Math.PI, color)
+    else drawFlowDot(ctx, x, y, color)
   }
 }

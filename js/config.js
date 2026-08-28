@@ -107,13 +107,21 @@ export const FLOW_PARTICLE_SPACING = 26 // 입자(화살표/전자 표시) 사�
 //   (I = nqAv 에서 운반자 밀도 n 을 고정하고 표류 속도 v 만 바꾸는 것과 같다)
 // ⚠️ 상한이 있다. 너무 빠르면 화살표가 뭉개져 방향조차 안 보인다. 다만 상한에 걸리면
 //    그 위로는 전류가 더 세져도 화면이 같아진다 — 어디서 걸리는지는 FLOW_SPEED_MAX_CURRENT.
-export const FLOW_SPEED_PER_AMP = 40 // 논리단위/초 per A
+export const FLOW_SPEED_PER_AMP = 75 // 논리단위/초 per A
 // 상한을 4A 로 잡은 이유: 교실에서 만들 수 있는 회로가 실제로 3A 를 넘는다.
 // 9V 전지에 5Ω 두 개를 병렬(=2.5Ω)로 걸면 3.6A 다 — 정상적인 «병렬 연결» 실험인데
 // 상한이 3A 면 그 회로부터 세기를 반영하지 못했다(2026-08-28 확인).
 // 4A 위는 합선 경고(5A)와 겹치는 영역이라 실용상 문제되지 않는다.
-export const FLOW_SPEED_CAP = 160 // 논리단위/초
+export const FLOW_SPEED_CAP = 300 // 논리단위/초
 export const FLOW_SPEED_MAX_CURRENT = FLOW_SPEED_CAP / FLOW_SPEED_PER_AMP // = 4A
+
+// ⚠️ 상한을 더 올리면 안 되는 이유 — **바퀴가 거꾸로 도는 착시**(에일리어싱).
+//   입자가 한 프레임에 «간격의 절반» 보다 많이 움직이면, 눈은 앞 입자가 아니라
+//   뒤 입자가 다가온 것으로 읽어 흐름이 거꾸로 보인다. 학교 기기는 24fps 까지
+//   떨어질 수 있으므로 그 최악을 기준으로 잡는다:
+//       상한 ≤ (간격 / 2) × 최저 프레임율 = 13 × 24 = 312
+//   tests.js 가 이 부등식을 검사한다. 속도를 올리고 싶으면 간격도 같이 봐야 한다.
+export const FLOW_MIN_FPS = 24
 
 export function flowSpeed(current) {
   return Math.min(Math.abs(current) * FLOW_SPEED_PER_AMP, FLOW_SPEED_CAP)
