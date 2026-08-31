@@ -4,7 +4,7 @@
 
 | 사본 | 원본 (이게 진짜다) |
 |---|---|
-| `공통-CLAUDE.md` | `Desktop\Claude\CLAUDE.md` |
+| `CLAUDE-공통.md` | `Desktop\Claude\CLAUDE.md` |
 
 ## 왜 여기 있나
 
@@ -17,13 +17,13 @@
 원본을 고친 뒤 아래로 사본을 갱신한다:
 
 ```bash
-cp "../../../CLAUDE.md" "docs/공용문서-백업/공통-CLAUDE.md"
+cp "../../../CLAUDE.md" "docs/공용문서-백업/CLAUDE-공통.md"
 ```
 
 ## 복구할 때
 
 ```bash
-cp "docs/공용문서-백업/공통-CLAUDE.md" "../../../CLAUDE.md"
+cp "docs/공용문서-백업/CLAUDE-공통.md" "../../../CLAUDE.md"
 ```
 
 ## 환경 문서(`~/.claude/CLAUDE.md`)는 왜 없나
