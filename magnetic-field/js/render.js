@@ -26,6 +26,91 @@ export function toScene(p) {
 const CURRENT_COLOR = 0xf59e0b
 const FIELD_LINE_COLOR = 0x2563eb
 
+// ── 장식용 텍스처 ──
+//
+// render.js는 DOM을 직접 건드리지 않는다는 원칙(main.js만 document를 만짐)이 있어서,
+// 배경 그러데이션·전류 흐름 무늬는 <canvas> 2D로 그리지 않고 **숫자 배열로 직접** 만든다
+// (THREE.DataTexture — document.createElement 없이 픽셀 값을 바로 채운다).
+
+/** 위(하늘색)→아래(기존 배경색과 자연스럽게 이어짐)로 이어지는 세로 그러데이션. 카메라가
+ * 돌아가도 배경은 화면에 고정된 채라(큐브맵이 아닌 일반 텍스처), 항상 "위=하늘"로 읽힌다. */
+function makeSkyGradientTexture() {
+  const H = 64
+  const stops = [
+    [0, 219, 234, 254], // 위쪽 — 옅은 하늘색 #dbeafe
+    [0.55, 238, 242, 247], // 지평선 근처 — 기존 배경색 #eef2f7
+    [1, 248, 250, 252], // 아래쪽 — 살짝 더 밝게 #f8fafc
+  ]
+  const data = new Uint8Array(H * 4)
+  for (let y = 0; y < H; y++) {
+    const t = 1 - y / (H - 1) // 텍스처 y=0이 화면 아래쪽이 되므로 뒤집어 채운다
+    let a = stops[0]
+    let b = stops[stops.length - 1]
+    for (let i = 0; i < stops.length - 1; i++) {
+      if (t >= stops[i][0] && t <= stops[i + 1][0]) {
+        a = stops[i]
+        b = stops[i + 1]
+        break
+      }
+    }
+    const span = b[0] - a[0] || 1
+    const k = (t - a[0]) / span
+    const idx = y * 4
+    data[idx + 0] = Math.round(a[1] + (b[1] - a[1]) * k)
+    data[idx + 1] = Math.round(a[2] + (b[2] - a[2]) * k)
+    data[idx + 2] = Math.round(a[3] + (b[3] - a[3]) * k)
+    data[idx + 3] = 255
+  }
+  const tex = new THREE.DataTexture(data, 1, H, THREE.RGBAFormat)
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.needsUpdate = true
+  return tex
+}
+
+/** 실험대 가운데가 은은하게 밝고 가장자리로 갈수록 살짝 가라앉는 원형 그러데이션 —
+ * 시선이 코일·도선 쪽으로 자연스럽게 모이게 한다. */
+function makeTableVignetteTexture() {
+  const N = 64
+  const data = new Uint8Array(N * N * 4)
+  const center = [246, 249, 252] // 가운데 — 밝게
+  const edge = [199, 209, 222] // 가장자리 — 살짝 어둡게
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const u = (x + 0.5) / N - 0.5
+      const v = (y + 0.5) / N - 0.5
+      const d = Math.min(Math.hypot(u, v) / 0.5, 1)
+      const idx = (y * N + x) * 4
+      data[idx + 0] = Math.round(center[0] + (edge[0] - center[0]) * d)
+      data[idx + 1] = Math.round(center[1] + (edge[1] - center[1]) * d)
+      data[idx + 2] = Math.round(center[2] + (edge[2] - center[2]) * d)
+      data[idx + 3] = 255
+    }
+  }
+  const tex = new THREE.DataTexture(data, N, N, THREE.RGBAFormat)
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.needsUpdate = true
+  return tex
+}
+
+/** 도선 위를 타고 흐르는 밝은 띠 — emissiveMap으로 써서 "전류가 흐른다"는 인상을 준다. */
+function makeFlowStripeTexture() {
+  const H = 16
+  const data = new Uint8Array(H * 4)
+  for (let i = 0; i < H; i++) {
+    const v = i < H * 0.4 ? 255 : 60
+    data[i * 4 + 0] = v
+    data[i * 4 + 1] = v
+    data[i * 4 + 2] = v
+    data[i * 4 + 3] = 255
+  }
+  const tex = new THREE.DataTexture(data, 1, H, THREE.RGBAFormat)
+  tex.wrapS = THREE.RepeatWrapping
+  tex.wrapT = THREE.RepeatWrapping
+  tex.repeat.set(1, 24)
+  tex.needsUpdate = true
+  return tex
+}
+
 const COIL_HALF_LEN = 62 / MODEL_SCALE
 const COIL_RADIUS = 26 / MODEL_SCALE
 const COIL_LOOPS = 5
@@ -40,9 +125,12 @@ const WIRE_HALF_LEN = 7
 export function createScene(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true })
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 3))
+  // 부드러운 그림자 — 나침반·코일·도선이 실험대에 발을 딛고 있는 느낌을 준다(2026-09-03 개선).
+  renderer.shadowMap.enabled = true
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap
 
   const scene = new THREE.Scene()
-  scene.background = new THREE.Color('#eef2f7')
+  scene.background = makeSkyGradientTexture()
 
   const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100)
   camera.position.set(3.6, 3.0, 4.6)
@@ -56,17 +144,50 @@ export function createScene(canvas) {
   controls.target.set(0, 0.15, 0)
   controls.update()
 
+  // ── 코일 자기력선용 카메라 자동 맞춤 ──
+  //
+  // 코일 자기력선은 축 가까이서 출발한 것일수록 크게 부풀어 오른다(안쪽 시드 기준 모델
+  // 좌표로 최대 약 239, 장면 좌표로 약 4). 기본 시점(나침반을 크게 보여주려고 가깝게 잡은
+  // 거리)에서는 그 부풀어 오른 윗부분이 화면 위로 잘려 나가, 자기력선을 켜도 학생이 전체
+  // 모양을 보려면 손가락으로 시점을 직접 돌려야 했다. 코일 모드에서 자기력선을 켤 때만
+  // 카메라를 뒤로 물려 전체 모양이 한눈에 들어오게 한다 — 사용자가 이미 돌려놓은 방향(시야각)은
+  // 그대로 두고 거리·높이만 부드럽게 바꾼다(2026-09-03 개선).
+  const CAMERA_DEFAULT_RADIUS = camera.position.distanceTo(controls.target)
+  const CAMERA_DEFAULT_TARGET_Y = controls.target.y
+  const CAMERA_COIL_FIELDLINES_RADIUS = CAMERA_DEFAULT_RADIUS * 1.45
+  const CAMERA_COIL_FIELDLINES_TARGET_Y = 1.1
+  const CAMERA_FIT_DURATION = 0.6 // 초 — 순간이동이 아니라 서서히 물러나는 것처럼 보이게
+  /** wantWide가 바뀔 때마다 다시 채워지는 진행 중 애니메이션 상태 */
+  let camFit = { active: false, t: 0, fromRadius: CAMERA_DEFAULT_RADIUS, toRadius: CAMERA_DEFAULT_RADIUS, fromTargetY: CAMERA_DEFAULT_TARGET_Y, toTargetY: CAMERA_DEFAULT_TARGET_Y }
+  let wantWideView = false
+  /** 화살표 맥동·도선 흐름 무늬에 쓰는 누적 시간(초) */
+  let elapsedTime = 0
+  /** 도선의 흐름 무늬가 1초에 몇 바퀴(텍스처 반복 단위) 도는지 */
+  const WIRE_FLOW_SPEED = 0.5
+
   scene.add(new THREE.HemisphereLight(0xffffff, 0xb8c2cf, 1.0))
   const sun = new THREE.DirectionalLight(0xffffff, 0.9)
   sun.position.set(4, 6, 3)
+  sun.castShadow = true
+  sun.shadow.mapSize.set(1024, 1024)
+  sun.shadow.camera.left = -6
+  sun.shadow.camera.right = 6
+  sun.shadow.camera.top = 6
+  sun.shadow.camera.bottom = -6
+  sun.shadow.camera.near = 1
+  sun.shadow.camera.far = 16
+  sun.shadow.bias = -0.0015
   scene.add(sun)
 
   // ── 실험대 ──
+  // 가운데가 은은하게 밝은 원형 그러데이션(makeTableVignetteTexture)을 얹어 시선이
+  // 코일·도선 쪽으로 모이게 한다. 격자는 그대로 두어 척도를 가늠하는 기준으로 쓴다.
   const table = new THREE.Mesh(
     new THREE.CylinderGeometry(4.4, 4.4, 0.12, 48),
-    new THREE.MeshStandardMaterial({ color: '#e2e8f0', roughness: 0.9 }),
+    new THREE.MeshStandardMaterial({ map: makeTableVignetteTexture(), roughness: 0.9 }),
   )
   table.position.y = -0.06
+  table.receiveShadow = true
   scene.add(table)
   const grid = new THREE.GridHelper(8.8, 22, '#cbd5e1', '#dbe3ec')
   grid.position.y = 0.001
@@ -77,15 +198,28 @@ export function createScene(canvas) {
   // three.js 기본 ArrowHelper는 몸통을 **선(Line)** 으로 그려서 1픽셀 굵기라 잘 안 보인다.
   // 원기둥(몸통)+원뿔(머리)로 직접 만들어 굵기를 정한다. 도선과 **같은 축에** 놓이는
   // 화살표는 도선보다 굵어야 도선 속에 파묻히지 않는다(2026-08-07 사용자 피드백).
+  // 화살표는 살짝 빛나는(emissive) 재질을 쓴다 — "지금 전류가 흐르고 있다"는 인상을
+  // 더해 준다. update()에서 material.emissiveIntensity를 은은하게 맥동시키므로, 만든
+  // 재질을 arrowMaterials에 모아 둔다(2026-09-03 개선).
+  const arrowMaterials = []
   function makeArrowMesh(shaftR, length, color) {
-    const mat = new THREE.MeshStandardMaterial({ color })
+    const mat = new THREE.MeshStandardMaterial({
+      color,
+      roughness: 0.35,
+      metalness: 0.15,
+      emissive: color,
+      emissiveIntensity: 0.35,
+    })
+    arrowMaterials.push(mat)
     const headLen = Math.min(shaftR * 4.5, length * 0.45)
     const shaftLen = length - headLen
     const g = new THREE.Group()
     const shaft = new THREE.Mesh(new THREE.CylinderGeometry(shaftR, shaftR, shaftLen, 14), mat)
     shaft.position.y = shaftLen / 2
+    shaft.castShadow = true
     const head = new THREE.Mesh(new THREE.ConeGeometry(shaftR * 2.1, headLen, 16), mat)
     head.position.y = shaftLen + headLen / 2
+    head.castShadow = true
     g.add(shaft, head)
     // 화살표 한가운데가 원점에 오도록 내려 둔다 — 놓을 자리를 잡기 쉬워진다.
     const inner = new THREE.Group()
@@ -101,7 +235,7 @@ export function createScene(canvas) {
   // 코일이라는 게 충분히 읽힌다(2026-08-07 사용자 피드백).
   const coilGroup = new THREE.Group()
 
-  const loopMat = new THREE.MeshStandardMaterial({ color: '#92400e' })
+  const loopMat = new THREE.MeshStandardMaterial({ color: '#92400e', roughness: 0.4, metalness: 0.25 })
   const coilArrows = []
   const loopGap = (COIL_HALF_LEN * 2) / (COIL_LOOPS - 1)
   for (let i = 0; i < COIL_LOOPS; i++) {
@@ -109,6 +243,8 @@ export function createScene(canvas) {
     const torus = new THREE.Mesh(new THREE.TorusGeometry(COIL_RADIUS, COIL_TUBE_R, 10, 40), loopMat)
     torus.rotation.y = Math.PI / 2 // 토러스의 구멍 방향(기본 Z축)을 코일 축(X축)으로 돌린다
     torus.position.x = lx
+    torus.castShadow = true
+    torus.receiveShadow = true
     coilGroup.add(torus)
 
     // 전류 방향 화살표 — 학생이 정한 조건을 그대로 보여줄 뿐, 결과를 알려주는 게 아니다.
@@ -126,11 +262,26 @@ export function createScene(canvas) {
   scene.add(coilGroup)
 
   // ── 직선 도선 ──
+  //
+  // 도선 표면에 은은하게 빛나는 띠 무늬(makeFlowStripeTexture)를 얹고, 매 프레임 그 무늬를
+  // 이동시켜 "전류가 흐르고 있다"는 인상을 더한다. 흐르는 방향은 **전류 방향 화살표와 똑같이
+  // model.direction의 부호를 그대로 가져다 쓴다** — 화살표 방향은 이미 오른손 법칙에 맞게
+  // 검증되어 있으므로(2026-08-07), 무늬만 그 화살표가 가리키는 쪽으로 흘러가게 하면 새로
+  // 방향을 유도할 필요가 없다. 렌더링으로 실제 이동 방향까지 확인했다(2026-09-03).
   const wireGroup = new THREE.Group()
+  const wireFlowTex = makeFlowStripeTexture()
   const wire = new THREE.Mesh(
     new THREE.CylinderGeometry(WIRE_R, WIRE_R, WIRE_HALF_LEN * 2, 20),
-    new THREE.MeshStandardMaterial({ color: '#e2e8f0' }),
+    new THREE.MeshStandardMaterial({
+      color: '#e2e8f0',
+      roughness: 0.4,
+      metalness: 0.35,
+      emissive: CURRENT_COLOR,
+      emissiveMap: wireFlowTex,
+      emissiveIntensity: 0.9,
+    }),
   )
+  wire.castShadow = true
   wireGroup.add(wire)
   const wireArrows = []
   // 전류 방향 화살표는 **하나만** 크게 둔다 — 여러 개를 늘어놓으면 도선을 가리기만 하고
@@ -145,14 +296,18 @@ export function createScene(canvas) {
   scene.add(wireGroup)
 
   // ── 나침반 8개 ──
-  const housingMat = new THREE.MeshStandardMaterial({ color: '#ffffff' })
-  const rimMat = new THREE.MeshStandardMaterial({ color: '#94a3b8' })
-  const nMat = new THREE.MeshStandardMaterial({ color: '#dc2626' })
-  const sMat = new THREE.MeshStandardMaterial({ color: '#1d4ed8' })
+  // 살짝 광택 있는 재질(금속성 낮게, 매끈하게)로 바꿔 플라스틱 CAD 모형보다 실제 계기처럼
+  // 보이게 한다 — 색 자체(흰 몸통·빨강 N·파랑 S)는 그대로라 판독성은 그대로다(2026-09-03 개선).
+  const housingMat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.35, metalness: 0.05 })
+  const rimMat = new THREE.MeshStandardMaterial({ color: '#94a3b8', roughness: 0.3, metalness: 0.6 })
+  const nMat = new THREE.MeshStandardMaterial({ color: '#dc2626', roughness: 0.3, metalness: 0.1 })
+  const sMat = new THREE.MeshStandardMaterial({ color: '#1d4ed8', roughness: 0.3, metalness: 0.1 })
   const compasses = []
   for (let i = 0; i < 8; i++) {
     const group = new THREE.Group()
     const housing = new THREE.Mesh(new THREE.CylinderGeometry(COMPASS_RADIUS, COMPASS_RADIUS, 0.05, 28), housingMat)
+    housing.castShadow = true
+    housing.receiveShadow = true
     group.add(housing)
     const rim = new THREE.Mesh(new THREE.TorusGeometry(COMPASS_RADIUS, 0.014, 8, 28), rimMat)
     rim.rotation.x = Math.PI / 2
@@ -164,10 +319,12 @@ export function createScene(canvas) {
     const north = new THREE.Mesh(new THREE.ConeGeometry(0.045, COMPASS_RADIUS * 0.85, 8), nMat)
     north.rotation.z = -Math.PI / 2
     north.position.x = COMPASS_RADIUS * 0.42
+    north.castShadow = true
     needle.add(north)
     const south = new THREE.Mesh(new THREE.ConeGeometry(0.045, COMPASS_RADIUS * 0.85, 8), sMat)
     south.rotation.z = Math.PI / 2
     south.position.x = -COMPASS_RADIUS * 0.42
+    south.castShadow = true
     needle.add(south)
     needle.position.y = 0.05
     group.add(needle)
@@ -288,8 +445,10 @@ export function createScene(canvas) {
   /**
    * @param needleAngles - 위치마다 실제로 그릴 각도(라디안) 배열(2D atan2 규약, model.js와 동일).
    *   main.js가 이전 각도에서 서서히 회전시켜(보간) 만든 값을 그대로 받아 쓴다.
+   * @param dt - 지난 프레임과의 시간차(초). 카메라 자동 맞춤 애니메이션에만 쓴다. 생략하면 0.
    */
-  function update(model, positions, needleAngles, state) {
+  function update(model, positions, needleAngles, state, dt = 0) {
+    elapsedTime += dt
     coilGroup.visible = model.mode === 'coil'
     wireGroup.visible = model.mode === 'wire'
 
@@ -308,6 +467,19 @@ export function createScene(canvas) {
       arrow.rotation.z = wireArrowRotZ
     }
 
+    // 전류가 흐르는 동안 화살표를 은은하게 맥동시킨다 — "지금 흐르고 있다"는 살아있는 느낌.
+    // 방향 정보는 전혀 담지 않는 단순한 밝기 변화라 방향 검증이 필요 없다.
+    const pulse = on ? 0.35 + 0.25 * (0.5 + 0.5 * Math.sin(elapsedTime * 4)) : 0.15
+    for (const mat of arrowMaterials) mat.emissiveIntensity = pulse
+
+    // 도선 위 흐름 무늬 — 텍스처는 offset을 늘릴수록 무늬가 반대 방향으로 흘러 보이므로
+    // (실제로 렌더링해 확인: +offset일 때 무늬가 -y로 흘렀다), model.direction에 마이너스를
+    // 붙여야 화살표가 가리키는 방향(+1이면 +y)과 같은 쪽으로 흐른다.
+    if (on) {
+      wireFlowTex.offset.y = (wireFlowTex.offset.y - model.direction * WIRE_FLOW_SPEED * dt) % 1
+    }
+    wire.material.emissiveIntensity = on ? 0.9 : 0
+
     positions.forEach((p, i) => {
       const sp = toScene(p)
       const c = compasses[i]
@@ -322,6 +494,36 @@ export function createScene(canvas) {
     if (key !== lastFieldKey) {
       lastFieldKey = key
       rebuildFieldLines(model, state.showFieldLines)
+    }
+
+    // ── 카메라 자동 맞춤 ──
+    // 코일 자기력선을 막 켰거나 껐을 때만 새 애니메이션을 시작한다(매 프레임 다시 시작하지 않음).
+    const wantWide = model.mode === 'coil' && state.showFieldLines
+    if (wantWide !== wantWideView) {
+      wantWideView = wantWide
+      const currentRadius = camera.position.distanceTo(controls.target)
+      camFit = {
+        active: true,
+        t: 0,
+        fromRadius: currentRadius,
+        toRadius: wantWide ? CAMERA_COIL_FIELDLINES_RADIUS : CAMERA_DEFAULT_RADIUS,
+        fromTargetY: controls.target.y,
+        toTargetY: wantWide ? CAMERA_COIL_FIELDLINES_TARGET_Y : CAMERA_DEFAULT_TARGET_Y,
+      }
+    }
+    if (camFit.active) {
+      camFit.t = Math.min(camFit.t + dt / CAMERA_FIT_DURATION, 1)
+      const eased = 1 - Math.pow(1 - camFit.t, 3) // ease-out — 처음엔 빠르게, 끝엔 서서히
+      const radius = camFit.fromRadius + (camFit.toRadius - camFit.fromRadius) * eased
+      const targetY = camFit.fromTargetY + (camFit.toTargetY - camFit.fromTargetY) * eased
+      // 사용자가 손가락으로 돌려놓은 현재 방향(구면좌표의 theta·phi)은 그대로 두고
+      // 거리(radius)만 바꾼다 — 그래야 자동 맞춤이 사용자의 시점 조작과 다투지 않는다.
+      const offset = camera.position.clone().sub(controls.target)
+      const spherical = new THREE.Spherical().setFromVector3(offset)
+      spherical.radius = radius
+      controls.target.y = targetY
+      camera.position.setFromSpherical(spherical).add(controls.target)
+      if (camFit.t >= 1) camFit.active = false
     }
   }
 

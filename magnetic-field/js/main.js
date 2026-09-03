@@ -121,7 +121,7 @@ function frame(ts) {
     }
   })
 
-  scene.update(model, positions, state.needleAngles, state)
+  scene.update(model, positions, state.needleAngles, state, dt)
   scene.renderFrame()
   requestAnimationFrame(frame)
 }
