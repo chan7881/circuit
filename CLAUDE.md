@@ -20,7 +20,11 @@ iframe으로 임베드해서 쓴다. 배포: `https://chan7881.github.io/circuit
 ```
 
 - 스타일은 `friction/styles.css` 하나를 모든 하위 시뮬레이터가 공유한다.
+- 3D 화면 **연출**(하늘 배경·실험대 무늬·그림자·금속 반사 환경)은 `shared/scene-style.js`를
+  가져다 쓴다. 물리와 무관한 것만 여기 둔다 — 같은 코드를 각 `render.js`에 복사하지 말 것.
 - 3D는 `vendor/three/`(three.js 0.160.0, MIT)를 import map으로 불러 쓴다. CDN 의존 없음.
+- ⚠️ **`metalness`를 올릴 거면 `applyStudioEnvironment()`도 켜야 한다.** 금속은 주변을 비추는
+  것이라 비출 환경이 없으면 **검게 죽는다**(2026-09-03에 지지대가 숯덩이가 됐다).
 - 임베드가 납작하다(높이 ~260px). `touch-action: none` 필요.
 
 ## 물리 검증 절차

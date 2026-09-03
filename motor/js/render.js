@@ -23,6 +23,7 @@
 
 import * as THREE from 'three'
 import { OrbitControls } from '../../vendor/three/OrbitControls.js'
+import { makeSkyGradientTexture, makeTableVignetteTexture, enableSoftShadows, applyStudioEnvironment } from '../../shared/scene-style.js'
 import {
   currentLevel,
   commutatorPhase,
@@ -58,7 +59,7 @@ export function createScene(canvas) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 3))
 
   const scene = new THREE.Scene()
-  scene.background = new THREE.Color('#eef2f7')
+  scene.background = makeSkyGradientTexture()
 
   const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100)
   camera.position.set(2.4, 1.9, 3.4)
@@ -75,21 +76,36 @@ export function createScene(canvas) {
   scene.add(new THREE.HemisphereLight(0xffffff, 0xb8c2cf, 1.0))
   const sun = new THREE.DirectionalLight(0xffffff, 0.85)
   sun.position.set(4, 6, 3)
+  // 부드러운 그림자 — 지지대·자석·코일이 실험대에 발을 딛고 있는 느낌을 준다(2026-09-03 개선).
+  enableSoftShadows(renderer, sun, 4)
+  // 금속이 비출 환경 — 없으면 metalness를 올린 부품이 검게 죽는다.
+  applyStudioEnvironment(renderer, scene)
   scene.add(sun)
 
   // ── 실험대 ──
+  // 가운데가 은은하게 밝은 원형 그러데이션을 얹어 시선이 장치 쪽으로 모이게 한다.
   const table = new THREE.Mesh(
     new THREE.CylinderGeometry(3.0, 3.0, 0.12, 48),
-    new THREE.MeshStandardMaterial({ color: '#e2e8f0', roughness: 0.9 }),
+    new THREE.MeshStandardMaterial({ map: makeTableVignetteTexture(), roughness: 0.9 }),
   )
   table.position.y = -0.06
+  table.receiveShadow = true
   scene.add(table)
   const grid = new THREE.GridHelper(6.0, 15, '#cbd5e1', '#dbe3ec')
   grid.position.y = 0.001
   scene.add(grid)
 
-  const metalMat = new THREE.MeshStandardMaterial({ color: '#94a3b8', roughness: 0.6 })
-  const copperMat = new THREE.MeshStandardMaterial({ color: COPPER, roughness: 0.45, metalness: 0.3 })
+  // 금속·구리에 광택을 준다 — 무광 플라스틱 덩어리보다 실제 실험 기구처럼 읽힌다.
+  // 색은 그대로라 N/S·전류 색 규약은 영향받지 않는다(2026-09-03 개선).
+  const metalMat = new THREE.MeshStandardMaterial({ color: '#aab6c4', roughness: 0.34, metalness: 0.35 })
+  const copperMat = new THREE.MeshStandardMaterial({ color: COPPER, roughness: 0.33, metalness: 0.42 })
+
+  /** 이 메시와 그 아래 모든 자식이 그림자를 드리우게 한다. */
+  function castShadows(root) {
+    root.traverse((o) => {
+      if (o.isMesh) o.castShadow = true
+    })
+  }
 
   // ── N·S 글자 표시 ────────────────────────────────────────────────
   //
@@ -197,7 +213,7 @@ export function createScene(canvas) {
   for (const [sx, color] of [[-1, '#dc2626'], [1, '#111827']]) {
     const term = new THREE.Mesh(
       new THREE.CylinderGeometry(0.05, 0.05, 0.07, 12),
-      new THREE.MeshStandardMaterial({ color }),
+      new THREE.MeshStandardMaterial({ color, roughness: 0.35, metalness: 0.45 }),
     )
     term.position.set(sx * (COIL_HALF_W + 0.25), PIVOT_Y + 0.065, 0)
     swingScene.add(term)
@@ -236,7 +252,7 @@ export function createScene(canvas) {
     for (const sy of [1, -1]) {
       const arm = new THREE.Mesh(
         new THREE.BoxGeometry(MAG_HALF_W * 2, YOKE_T, armLen),
-        new THREE.MeshStandardMaterial({ color: N_COLOR }),
+        new THREE.MeshStandardMaterial({ color: N_COLOR, roughness: 0.42, metalness: 0.2 }),
       )
       arm.position.set(0, sy * (GAP_HALF + YOKE_T / 2), BACK_Z + armLen / 2)
       horseshoe.add(arm)
@@ -287,7 +303,7 @@ export function createScene(canvas) {
       const dir = side === 'inner' ? -sx : sx
       const half = new THREE.Mesh(
         new THREE.BoxGeometry(MAG_W / 2, 0.44, 0.66),
-        new THREE.MeshStandardMaterial({ color: N_COLOR }),
+        new THREE.MeshStandardMaterial({ color: N_COLOR, roughness: 0.42, metalness: 0.2 }),
       )
       half.position.x = dir * MAG_W / 4
       group.add(half)
@@ -377,7 +393,7 @@ export function createScene(canvas) {
   {
     const body = new THREE.Mesh(
       new THREE.CylinderGeometry(0.1, 0.1, BATT_HALF * 2, 18),
-      new THREE.MeshStandardMaterial({ color: '#1f2937' }),
+      new THREE.MeshStandardMaterial({ color: '#1f2937', roughness: 0.4, metalness: 0.5 }),
     )
     body.rotation.z = Math.PI / 2
     body.position.set(0, BATT_Y, BATT_Z)
@@ -387,7 +403,7 @@ export function createScene(canvas) {
       // 전지의 양 끝(+ 또는 −) — model.direction에 따라 색이 바뀐다
       const cap = new THREE.Mesh(
         new THREE.CylinderGeometry(0.105, 0.105, 0.1, 18),
-        new THREE.MeshStandardMaterial({ color: '#dc2626' }),
+        new THREE.MeshStandardMaterial({ color: '#dc2626', roughness: 0.35, metalness: 0.35 }),
       )
       cap.rotation.z = Math.PI / 2
       cap.position.set(sx * BATT_HALF, BATT_Y, BATT_Z)
@@ -398,7 +414,7 @@ export function createScene(canvas) {
       const to = new THREE.Vector3(sx * (BRUSH_X + 0.02), MOTOR_CENTER_Y - 0.06, COMM_Z)
       const wire = new THREE.Mesh(
         new THREE.CylinderGeometry(0.018, 0.018, from.distanceTo(to), 8),
-        new THREE.MeshStandardMaterial({ color: '#dc2626' }),
+        new THREE.MeshStandardMaterial({ color: '#dc2626', roughness: 0.35, metalness: 0.35 }),
       )
       wire.position.copy(from.clone().add(to).multiplyScalar(0.5))
       wire.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), to.clone().sub(from).normalize())
@@ -413,6 +429,12 @@ export function createScene(canvas) {
       circuit.wires.push({ mesh: wire, from, to, sx })
     }
   }
+
+  // 장치를 다 만든 뒤 한 번에 그림자를 켠다 — 메시마다 따로 적어 두면 새 부품을 더할 때
+  // 빠뜨리기 쉽다. 보조 화살표(아래)는 제외한다: 빈 공간에 떠 있는 **설명용 기호**라
+  // 그림자가 지면 실제 물체처럼 보여 오히려 헷갈린다.
+  castShadows(swingScene)
+  castShadows(motorScene)
 
   // ── 보조 화살표(I·B·F·τ) ─────────────────────────────────────────
   //

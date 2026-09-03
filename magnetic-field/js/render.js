@@ -14,6 +14,13 @@
 
 import * as THREE from 'three'
 import { OrbitControls } from '../../vendor/three/OrbitControls.js'
+import {
+  makeSkyGradientTexture,
+  makeTableVignetteTexture,
+  makeFlowStripeTexture,
+  enableSoftShadows,
+  applyStudioEnvironment,
+} from '../../shared/scene-style.js'
 import { currentLevel, coilFieldAt, COIL_RADIUS as COIL_A_MODEL } from './model.js'
 
 /** 모델 좌표계 단위 → 3D 장면 단위(대략 미터 느낌) 환산 비율 */
@@ -25,91 +32,6 @@ export function toScene(p) {
 
 const CURRENT_COLOR = 0xf59e0b
 const FIELD_LINE_COLOR = 0x2563eb
-
-// ── 장식용 텍스처 ──
-//
-// render.js는 DOM을 직접 건드리지 않는다는 원칙(main.js만 document를 만짐)이 있어서,
-// 배경 그러데이션·전류 흐름 무늬는 <canvas> 2D로 그리지 않고 **숫자 배열로 직접** 만든다
-// (THREE.DataTexture — document.createElement 없이 픽셀 값을 바로 채운다).
-
-/** 위(하늘색)→아래(기존 배경색과 자연스럽게 이어짐)로 이어지는 세로 그러데이션. 카메라가
- * 돌아가도 배경은 화면에 고정된 채라(큐브맵이 아닌 일반 텍스처), 항상 "위=하늘"로 읽힌다. */
-function makeSkyGradientTexture() {
-  const H = 64
-  const stops = [
-    [0, 219, 234, 254], // 위쪽 — 옅은 하늘색 #dbeafe
-    [0.55, 238, 242, 247], // 지평선 근처 — 기존 배경색 #eef2f7
-    [1, 248, 250, 252], // 아래쪽 — 살짝 더 밝게 #f8fafc
-  ]
-  const data = new Uint8Array(H * 4)
-  for (let y = 0; y < H; y++) {
-    const t = 1 - y / (H - 1) // 텍스처 y=0이 화면 아래쪽이 되므로 뒤집어 채운다
-    let a = stops[0]
-    let b = stops[stops.length - 1]
-    for (let i = 0; i < stops.length - 1; i++) {
-      if (t >= stops[i][0] && t <= stops[i + 1][0]) {
-        a = stops[i]
-        b = stops[i + 1]
-        break
-      }
-    }
-    const span = b[0] - a[0] || 1
-    const k = (t - a[0]) / span
-    const idx = y * 4
-    data[idx + 0] = Math.round(a[1] + (b[1] - a[1]) * k)
-    data[idx + 1] = Math.round(a[2] + (b[2] - a[2]) * k)
-    data[idx + 2] = Math.round(a[3] + (b[3] - a[3]) * k)
-    data[idx + 3] = 255
-  }
-  const tex = new THREE.DataTexture(data, 1, H, THREE.RGBAFormat)
-  tex.colorSpace = THREE.SRGBColorSpace
-  tex.needsUpdate = true
-  return tex
-}
-
-/** 실험대 가운데가 은은하게 밝고 가장자리로 갈수록 살짝 가라앉는 원형 그러데이션 —
- * 시선이 코일·도선 쪽으로 자연스럽게 모이게 한다. */
-function makeTableVignetteTexture() {
-  const N = 64
-  const data = new Uint8Array(N * N * 4)
-  const center = [246, 249, 252] // 가운데 — 밝게
-  const edge = [199, 209, 222] // 가장자리 — 살짝 어둡게
-  for (let y = 0; y < N; y++) {
-    for (let x = 0; x < N; x++) {
-      const u = (x + 0.5) / N - 0.5
-      const v = (y + 0.5) / N - 0.5
-      const d = Math.min(Math.hypot(u, v) / 0.5, 1)
-      const idx = (y * N + x) * 4
-      data[idx + 0] = Math.round(center[0] + (edge[0] - center[0]) * d)
-      data[idx + 1] = Math.round(center[1] + (edge[1] - center[1]) * d)
-      data[idx + 2] = Math.round(center[2] + (edge[2] - center[2]) * d)
-      data[idx + 3] = 255
-    }
-  }
-  const tex = new THREE.DataTexture(data, N, N, THREE.RGBAFormat)
-  tex.colorSpace = THREE.SRGBColorSpace
-  tex.needsUpdate = true
-  return tex
-}
-
-/** 도선 위를 타고 흐르는 밝은 띠 — emissiveMap으로 써서 "전류가 흐른다"는 인상을 준다. */
-function makeFlowStripeTexture() {
-  const H = 16
-  const data = new Uint8Array(H * 4)
-  for (let i = 0; i < H; i++) {
-    const v = i < H * 0.4 ? 255 : 60
-    data[i * 4 + 0] = v
-    data[i * 4 + 1] = v
-    data[i * 4 + 2] = v
-    data[i * 4 + 3] = 255
-  }
-  const tex = new THREE.DataTexture(data, 1, H, THREE.RGBAFormat)
-  tex.wrapS = THREE.RepeatWrapping
-  tex.wrapT = THREE.RepeatWrapping
-  tex.repeat.set(1, 24)
-  tex.needsUpdate = true
-  return tex
-}
 
 const COIL_HALF_LEN = 62 / MODEL_SCALE
 const COIL_RADIUS = 26 / MODEL_SCALE
@@ -125,9 +47,6 @@ const WIRE_HALF_LEN = 7
 export function createScene(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true })
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 3))
-  // 부드러운 그림자 — 나침반·코일·도선이 실험대에 발을 딛고 있는 느낌을 준다(2026-09-03 개선).
-  renderer.shadowMap.enabled = true
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap
 
   const scene = new THREE.Scene()
   scene.background = makeSkyGradientTexture()
@@ -168,15 +87,10 @@ export function createScene(canvas) {
   scene.add(new THREE.HemisphereLight(0xffffff, 0xb8c2cf, 1.0))
   const sun = new THREE.DirectionalLight(0xffffff, 0.9)
   sun.position.set(4, 6, 3)
-  sun.castShadow = true
-  sun.shadow.mapSize.set(1024, 1024)
-  sun.shadow.camera.left = -6
-  sun.shadow.camera.right = 6
-  sun.shadow.camera.top = 6
-  sun.shadow.camera.bottom = -6
-  sun.shadow.camera.near = 1
-  sun.shadow.camera.far = 16
-  sun.shadow.bias = -0.0015
+  // 부드러운 그림자 — 나침반·코일·도선이 실험대에 발을 딛고 있는 느낌을 준다(2026-09-03 개선).
+  enableSoftShadows(renderer, sun, 6)
+  // 금속이 비출 환경 — 없으면 metalness를 올린 부품이 검게 죽는다.
+  applyStudioEnvironment(renderer, scene)
   scene.add(sun)
 
   // ── 실험대 ──
