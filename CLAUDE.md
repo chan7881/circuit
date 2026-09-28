@@ -44,7 +44,10 @@ iframe으로 임베드해서 쓴다. 배포: `https://chan7881.github.io/circuit
 
 ## 테스트
 
-각 시뮬의 `test.html`을 브라우저에서 열거나, node로 한 번에 돌린다:
+전부 한 번에: **`node scripts/run-all-tests.mjs`**. 같은 스크립트를 `--hook`으로 Claude Code
+PreToolUse 훅에 걸면 circuit에 대한 `git commit`을 실패 시 막는다(설정은 `Desktop\Claude\.claude\settings.json`).
+
+시뮬 하나만 보려면 `test.html`을 브라우저에서 열거나, node로 돌린다:
 
 ```bash
 node --input-type=module -e "
