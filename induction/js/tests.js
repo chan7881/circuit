@@ -217,6 +217,15 @@ function run(m, seconds) {
   placeRod(m, 60)
   run(m, 10)
   assert(gap(m) >= -0.001, `캔이 막대 안으로 파고들지 않는다 (틈=${gap(m).toFixed(2)})`)
+
+  // 캔을 오른쪽 벽까지 밀어붙인 뒤에도 막대를 계속 밀면 — 막대가 캔을 뚫고 들어가면 안 된다.
+  const w = createModel()
+  for (let x = 44; x <= 700; x += 4) {
+    setRodTipX(w, x)
+    run(w, 0.05)
+  }
+  run(w, 3)
+  assert(gap(w) >= -0.001, `벽에 붙은 캔을 막대가 뚫지 않는다 (틈=${gap(w).toFixed(2)})`)
 })()
 
 // 12) 물리가 폭발하지 않는다

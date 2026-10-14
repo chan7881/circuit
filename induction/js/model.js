@@ -110,7 +110,10 @@ export function setPreCharge(model, charge) {
  * 일어나고, 그때부터 결과가 달라지는 것이 이 시뮬레이터에서 가장 중요한 장면이다.
  */
 export function setRodTipX(model, x) {
-  const max = model.mode === 'scope' ? SCOPE_PLATE_LEFT : TRACK.right
+  // 캔 모드에서 막대가 갈 수 있는 끝은 «캔이 오른쪽 벽에 붙었을 때 캔의 왼쪽 면»이다.
+  // ⚠️ 예전에는 TRACK.right까지 허용해서, 캔을 벽까지 밀고 더 밀면 막대가 캔을 통째로
+  //    뚫고 들어가 겹쳐 그려졌다(2026-10-14 발견).
+  const max = model.mode === 'scope' ? SCOPE_PLATE_LEFT : TRACK.right - CAN_W
   model.rodTipX = Math.max(ROD_W + 4, Math.min(max, x))
   return model
 }
