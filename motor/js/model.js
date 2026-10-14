@@ -93,13 +93,42 @@ export function forceMagnitude(model) {
 
 // ── 모드 A: 전기 그네(진자) ──────────────────────────────────────────
 
-// 전류가 최대일 때 자리잡는 각도가 FORCE_K/RESTORE_K = 약 0.55 rad(≈32°)가 되도록 잡았다.
-// 한계각(SWING_MAX_ANGLE)에 닿지 않아야 전류 세기 단계별 차이가 각도로 그대로 보이고,
-// 이 정도 각도라야 코일의 아래 도선이 말굽자석의 극 사이를 벗어나지 않는다(그림상 자연스럽다).
-const SWING_FORCE_K = 10
+// ── 그네 장치의 치수(3D 장면 단위) — render.js가 이 값으로 그리고, tests.js가 «아래 도선이
+//    언제나 말굽자석의 두 극 사이에 있다»를 이 값으로 검사한다.
+export const SWING_GEOM = {
+  PIVOT_Y: 1.5, // 코일을 매단 가로대 높이
+  COIL_LEN: 0.92, // 매단 길이(세로변)
+  WIRE_R: 0.028, // 도선 반지름
+  GAP_HALF: 0.19, // 위아래 극 사이 틈의 절반
+  YOKE_T: 0.13, // 자석 몸통 두께
+  BACK_Z: -0.62, // 두 극을 뒤에서 잇는 판(요크)의 중심 z
+  ARM_FRONT_Z: 0.6, // 극 팔이 앞으로 뻗은 끝
+}
+
+/** 그네 각도 a일 때 아래 가로 도선의 (y, z). */
+export function swingWirePosition(angle) {
+  const { PIVOT_Y, COIL_LEN } = SWING_GEOM
+  return { y: PIVOT_Y - COIL_LEN * Math.cos(angle), z: SWING_FORWARD_Z * COIL_LEN * Math.sin(angle) }
+}
+
+// 전류가 최대일 때 자리잡는 각도가 FORCE_K/RESTORE_K = 약 0.44 rad(≈25°)가 되도록 잡았다.
+//
+// ⚠️ 예전 값(FORCE 10·감쇠 2.2, 평형 32°)은 **넘침**을 보지 않았다. 감쇠비가 0.26이라 출발할 때
+//    0.79 rad, 방향을 뒤집으면 1.03 rad까지 휘둘려서, 아래 도선이 위 극 높이로 올라가거나
+//    말굽자석 뒤판을 뚫고 자석 **뒤로** 빠져나갔다(전류 100%·방향 B에서 그대로 멈춰 있었다,
+//    2026-10-14 발견). 극 사이를 벗어나면 힘도 받을 수 없으니 물리적으로도 틀린 그림이다.
+//    지금 값은 정지 출발 0.50·뒤집기 0.555·공진 주기로 버튼 연타 0.571 rad — 모두 아래 한계 안이다.
+const SWING_FORCE_K = 8
 const SWING_RESTORE_K = 18
-const SWING_DAMPING = 2.2
-export const SWING_MAX_ANGLE = 1.15
+const SWING_DAMPING = 4.6
+/**
+ * 한계각 = 아래 도선이 **위 극 면에 닿는** 각. 그 이상은 극에 부딪혀 멈춘다(도선이 틈을 못 벗어난다).
+ * 각이 커지면 도선이 원호를 그리며 위로 올라가기 때문에 생기는 한계다.
+ */
+export const SWING_MAX_ANGLE = Math.acos(
+  (SWING_GEOM.PIVOT_Y - (SWING_GEOM.PIVOT_Y - SWING_GEOM.COIL_LEN + SWING_GEOM.GAP_HALF - SWING_GEOM.WIRE_R)) /
+    SWING_GEOM.COIL_LEN,
+)
 
 export function stepSwing(model, dt) {
   const drive = forceSign(model) * forceMagnitude(model) * SWING_FORCE_K
@@ -115,6 +144,28 @@ export function stepSwing(model, dt) {
   }
   return model
 }
+
+// ── 그네 장면에 **그려지는 조건**의 방향(3D 장면 좌표: x 오른쪽, y 위, z 앞) ──
+// render.js가 화살표·극·단자를 이 함수들로 그린다. 그래야 tests.js가 «그려 놓은 조건으로
+// 오른손 법칙을 적용한 결과»와 «그네가 실제로 가는 쪽»을 대조할 수 있다.
+
+/** 아래 가로 도선에 흐르는 전류의 방향(단위 벡터). 방향 A면 +x(왼→오). */
+export function swingCurrentDir(model) {
+  return { x: model.direction, y: 0, z: 0 }
+}
+
+/** 말굽자석의 **아래** 극이 N인가. polarity +1이면 아래가 N. */
+export function swingLowerPoleIsN(model) {
+  return model.magnetPolarity > 0
+}
+
+/** + 단자가 어느 쪽(x 부호: −1 왼쪽, +1 오른쪽)에 있는가 — 전류는 + 단자 쪽 세로변으로 들어온다. */
+export function swingPlusTerminalSide(model) {
+  return -model.direction
+}
+
+/** swingAngle이 양수일 때 아래 도선이 움직이는 방향(z 부호). render.js의 회전 부호와 같아야 한다. */
+export const SWING_FORWARD_Z = 1
 
 export function resetSwing(model) {
   model.swingAngle = 0

@@ -80,6 +80,13 @@ function setModeUI(mode) {
     state.paused = false
     state.speed = 1
   }
+  // 극 배치 버튼 이름은 그 모드의 자석 모양을 따라야 한다. 그네의 말굽자석은 극이 **위·아래**,
+  // 전동기의 두 자석은 **왼쪽·오른쪽**이다. ⚠️ 예전에는 두 모드 모두 «왼쪽 N / 오른쪽 N»이라,
+  // 그네에서 «왼쪽 N»을 누르면 N이 아래에 나타났다(2026-10-14). polarity +1 = 그네 아래 N = 전동기 왼쪽 N.
+  for (const btn of polarityButtons.querySelectorAll('.chip')) {
+    const plus = Number(btn.dataset.polarity) > 0
+    btn.textContent = isMotor ? (plus ? '왼쪽 N' : '오른쪽 N') : plus ? '아래 N' : '위 N'
+  }
   syncPause()
   scene.focusMode(mode)
 }

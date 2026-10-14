@@ -30,6 +30,11 @@ import {
   reducedMotorAngle,
   isCommutatorBreak,
   COMMUTATOR_BREAK_HALF_ANGLE,
+  swingCurrentDir,
+  swingLowerPoleIsN,
+  swingPlusTerminalSide,
+  SWING_FORWARD_Z,
+  SWING_GEOM,
 } from './model.js'
 
 const N_COLOR = '#e11d48'
@@ -41,11 +46,13 @@ const FORCE_COLOR = 0xef4444 // 힘 F — 빨강
 
 // ── 공통 코일 치수 ──
 const COIL_HALF_W = 0.42 // 가로 반너비(두 세로변 사이 거리의 절반)
-const COIL_LEN = 0.92 // 세로변 길이(그네에서는 매단 길이, 전동기에서는 축 방향 길이)
-const WIRE_R = 0.028
+// 그네 치수는 model.js의 SWING_GEOM 한 곳에 둔다 — tests.js가 «도선이 극 사이에 머무는가»를
+// 같은 값으로 검사해야 하기 때문이다.
+const COIL_LEN = SWING_GEOM.COIL_LEN // 세로변 길이(그네에서는 매단 길이, 전동기에서는 축 방향 길이)
+const WIRE_R = SWING_GEOM.WIRE_R
 
 // ── 모드 A(그네) 배치 ──
-const PIVOT_Y = 1.5
+const PIVOT_Y = SWING_GEOM.PIVOT_Y
 const SWING_GAP_Y = PIVOT_Y - COIL_LEN // 아래 가로 도선의 높이(= 말굽자석 틈 한가운데)
 /** 자기장 화살표를 놓는 깊이 — 말굽이 트인 앞쪽이라 코일에 가리지 않는다. */
 const SWING_B_Z = 0.24
@@ -210,13 +217,23 @@ export function createScene(canvas) {
     swingScene.add(post)
   }
   // 단자 두 개 — 빨강(+)·검정(−). 자바실험실과 같은 색 규약.
-  for (const [sx, color] of [[-1, '#dc2626'], [1, '#111827']]) {
+  // ⚠️ 어느 쪽이 +인지는 **전류 방향을 따라 바뀐다**(update()에서 칠한다). 예전에는 왼쪽 빨강으로
+  //    고정이라, «방향 B»에서 전류가 오른쪽 단자로 들어가는데도 왼쪽이 +로 보였다 — 보조
+  //    화살표를 끄면 학생이 전류 방향을 읽을 단서가 단자뿐이라 정반대로 읽게 된다(2026-10-14).
+  //    전동기 모드의 전지처럼 +/− 글자도 붙인다(색만으로 알리지 않는다).
+  const swingTerminals = []
+  for (const sx of [-1, 1]) {
     const term = new THREE.Mesh(
       new THREE.CylinderGeometry(0.05, 0.05, 0.07, 12),
-      new THREE.MeshStandardMaterial({ color, roughness: 0.35, metalness: 0.45 }),
+      new THREE.MeshStandardMaterial({ color: '#dc2626', roughness: 0.35, metalness: 0.45 }),
     )
     term.position.set(sx * (COIL_HALF_W + 0.25), PIVOT_Y + 0.065, 0)
     swingScene.add(term)
+    swingTerminals.push({
+      mesh: term,
+      label: makeTerminalLabel(swingScene, sx * (COIL_HALF_W + 0.25), PIVOT_Y + 0.2, 0, 0.13),
+      sx,
+    })
   }
 
   // 매달린 코일 — 피벗(가로대)을 중심으로 x축 둘레로 흔들린다
@@ -231,11 +248,8 @@ export function createScene(canvas) {
   horseshoe.position.set(0, SWING_GAP_Y, 0)
   swingScene.add(horseshoe)
   {
-    const GAP_HALF = 0.19 // 위아래 극 사이 틈의 절반
-    const YOKE_T = 0.13 // 자석 몸통 두께
+    const { GAP_HALF, YOKE_T, BACK_Z, ARM_FRONT_Z } = SWING_GEOM // 뒤판·극 팔 — 그네가 흔들려도 도선이 극 사이에 남도록
     const MAG_HALF_W = 0.17 // x방향 폭의 절반(코일 세로변보다 좁아야 코일이 그 사이를 지난다)
-    const BACK_Z = -0.34 // 뒤를 잇는 판의 위치
-    const ARM_FRONT_Z = 0.5 // 극 팔이 앞으로 뻗은 끝 — 그네가 흔들려도 도선이 극 사이에 남도록 넉넉히
 
     // 뒤를 잇는 판(요크) — 여기서 자기 회로가 이어진다
     const back = new THREE.Mesh(
@@ -518,17 +532,26 @@ export function createScene(canvas) {
 
     if (!isMotor) {
       // ── 전기 그네 ──
-      // 양(+) swingAngle이 앞(+z)으로 나가도록 x축 둘레 회전 부호를 맞춘다.
-      swingPivot.rotation.x = -model.swingAngle
+      // 양(+) swingAngle이 앞(+z, SWING_FORWARD_Z)으로 나가도록 x축 둘레 회전 부호를 맞춘다.
+      swingPivot.rotation.x = -SWING_FORWARD_Z * model.swingAngle
 
       // 위/아래 극 색. 두 극 사이의 자기장은 **N극 면에서 나와 S극 면으로 들어간다** —
       // 그래서 자기장이 위로 향하는(polarity=+1) 배치는 **아래가 N, 위가 S**다.
+      const lowerN = swingLowerPoleIsN(model)
       const [upper, lower] = horseshoe.userData.poles
-      lower.material.color.set(pol > 0 ? N_COLOR : S_COLOR)
-      upper.material.color.set(pol > 0 ? S_COLOR : N_COLOR)
+      lower.material.color.set(lowerN ? N_COLOR : S_COLOR)
+      upper.material.color.set(lowerN ? S_COLOR : N_COLOR)
       const [upperLabel, lowerLabel] = horseshoe.userData.labels
-      lowerLabel.setPole(pol > 0 ? 'N' : 'S')
-      upperLabel.setPole(pol > 0 ? 'S' : 'N')
+      lowerLabel.setPole(lowerN ? 'N' : 'S')
+      upperLabel.setPole(lowerN ? 'S' : 'N')
+
+      // 단자 +/− — 전류 방향 버튼을 누르면 전지를 뒤집어 꽂은 것처럼 바뀐다.
+      const plusSide = swingPlusTerminalSide(model)
+      for (const t of swingTerminals) {
+        const isPlus = t.sx === plusSide
+        t.mesh.material.color.set(isPlus ? '#dc2626' : '#111827')
+        t.label.setPlus(isPlus)
+      }
 
       if (showHelper && on) {
         const gapHalf = horseshoe.userData.gapHalf
@@ -541,26 +564,29 @@ export function createScene(canvas) {
         // 자리도 중요하다: 예전에는 틈 안쪽 깊숙이(z=0) 짧게 그려서, 코일 도선과 전류 화살표
         // 뒤에 가려 잘 보이지 않았다(2026-08-07 사용자 지적). 말굽이 트여 있는 앞쪽으로
         // 당겨 오면 두 극 사이를 지나는 것이 한눈에 보인다.
-        const bFrom = SWING_GAP_Y - gapHalf // N극 면(polarity가 +면 아래가 N)
+        const bUp = lowerN ? 1 : -1 // N극 면에서 나와 S극 면으로 — 아래가 N이면 위로
+        const bFrom = SWING_GAP_Y - gapHalf // 아래 극 면
         for (const [key, sx] of [['swingB1', -1], ['swingB2', 0], ['swingB3', 1]]) {
           placeArrow(
             arrows[key],
-            new THREE.Vector3(sx * 0.1, pol > 0 ? bFrom : bFrom + gapHalf * 2, SWING_B_Z),
-            new THREE.Vector3(0, pol, 0),
+            new THREE.Vector3(sx * 0.1, bUp > 0 ? bFrom : bFrom + gapHalf * 2, SWING_B_Z),
+            new THREE.Vector3(0, bUp, 0),
             gapHalf * 2,
           )
         }
         // I — 아래 가로 도선을 따라 흐르는 전류. 도선과 같은 축에, 도선보다 굵고 길게 그려
         // 도선에 파묻히지 않게 한다(머리가 도선 끝 밖으로 나오도록).
+        const iDir = swingCurrentDir(model)
         placeArrow(
           arrows.swingI,
-          wire.clone().add(new THREE.Vector3(-model.direction * COIL_HALF_W, 0, 0)),
-          new THREE.Vector3(model.direction, 0, 0),
+          wire.clone().add(new THREE.Vector3(-iDir.x * COIL_HALF_W, 0, 0)),
+          new THREE.Vector3(iDir.x, iDir.y, iDir.z),
           COIL_HALF_W * 2.3,
         )
-        // F — 전류(x)와 자기장(y)에 모두 수직인 방향(z). 세기는 전류에 비례.
+        // F — I×B. 그려 놓은 전류·자기장 화살표에서 그대로 외적한다(따로 부호를 정하지 않는다).
         // 이 시뮬레이터에서 가장 중요한 화살표라 넉넉히 길게 그린다.
-        placeArrow(arrows.swingF, wire, new THREE.Vector3(0, 0, model.direction * pol), 0.4 + 0.7 * level)
+        const fDir = new THREE.Vector3(iDir.x, iDir.y, iDir.z).cross(new THREE.Vector3(0, bUp, 0))
+        placeArrow(arrows.swingF, wire, fDir, 0.4 + 0.7 * level)
       }
     } else {
       // ── 직류 전동기 ──

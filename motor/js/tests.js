@@ -23,6 +23,12 @@ import {
   motorTorque,
   MOTOR_MAX_SPEED,
   step,
+  swingCurrentDir,
+  swingLowerPoleIsN,
+  swingPlusTerminalSide,
+  SWING_FORWARD_Z,
+  SWING_GEOM,
+  swingWirePosition,
 } from './model.js'
 
 const results = []
@@ -125,6 +131,106 @@ function runFor(model, seconds, dt, stepFn) {
   setCurrent(m, MAX_CURRENT)
   runFor(m, 20, 1 / 60, stepSwing)
   assert(Math.abs(m.swingAngle) <= SWING_MAX_ANGLE + 1e-9, `그네 각도가 한계(${SWING_MAX_ANGLE})를 넘지 않는다 (실제=${m.swingAngle.toFixed(3)})`)
+})()
+
+// 7-1) 그네 — **화면에 그려 놓은 조건**(단자 +/−, 자석 N/S)으로 오른손 법칙을 적용한 결과와
+//      그네가 실제로 가는 쪽이 같아야 한다. 이론 기준을 모델 함수와 따로 세운다:
+//   ① 전류는 + 단자 쪽 세로변으로 내려와 아래 도선을 지나 − 단자 쪽으로 간다
+//      → 아래 도선 전류의 x 부호 = −(+ 단자의 x 부호)
+//   ② 자기장은 N극 면에서 나와 S극 면으로 → 아래가 N이면 +y
+//   ③ F = I × B
+// ⚠️ 예전에는 단자가 왼쪽 + 로 고정이라 «방향 B»에서 ①이 깨졌다(2026-10-14).
+;(function swingDrawnConditionsMatchMotion() {
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+  for (const dir of [1, -1]) {
+    for (const pol of [1, -1]) {
+      const m = createModel()
+      setMode(m, 'swing')
+      setDirection(m, dir)
+      setMagnetPolarity(m, pol)
+      setCurrent(m, MAX_CURRENT)
+      const tag = `전류 ${dir > 0 ? 'A' : 'B'}·${pol > 0 ? '아래 N' : '위 N'}`
+
+      const plusX = swingPlusTerminalSide(m)
+      const iTheory = [-plusX, 0, 0] // ①
+      const bTheory = [0, swingLowerPoleIsN(m) ? 1 : -1, 0] // ②
+      const fTheory = cross(iTheory, bTheory) // ③
+
+      const iDrawn = swingCurrentDir(m)
+      eq(iDrawn.x, iTheory[0], `${tag}: 그려진 전류 화살표가 + 단자에서 나오는 방향과 같다`)
+
+      runFor(m, 6, 1 / 60, stepSwing)
+      const motionZ = Math.sign(m.swingAngle) * SWING_FORWARD_Z
+      eq(motionZ, Math.sign(fTheory[2]), `${tag}: 그네가 I×B 쪽으로 간다`)
+    }
+  }
+})()
+
+// 7-2) 그네 — 아래 도선은 **언제나 말굽자석의 두 극 사이**에 있어야 한다.
+//      극 사이를 벗어나면 힘을 받을 수 없으니, 벗어난 그림은 물리적으로 틀린 그림이다.
+//   ⚠️ 예전 상수는 넘침이 커서(방향 뒤집기 1.03 rad) 도선이 자석 뒤판을 뚫고 뒤로 빠져나갔다(2026-10-14).
+;(function swingWireStaysBetweenPoles() {
+  const { PIVOT_Y, COIL_LEN, WIRE_R, GAP_HALF, YOKE_T, BACK_Z, ARM_FRONT_Z } = SWING_GEOM
+  const gapCenter = PIVOT_Y - COIL_LEN
+  const yokeFront = BACK_Z + YOKE_T / 2
+  // 한계각은 «도선이 위 극 면에 닿는 각»이다 — 그보다 크면 틈을 벗어나고, 작으면 극을 못 쓴다.
+  const atLimit = swingWirePosition(SWING_MAX_ANGLE)
+  assert(
+    Math.abs(atLimit.y + WIRE_R - (gapCenter + GAP_HALF)) < 1e-9,
+    `한계각에서 도선이 위 극 면에 정확히 닿는다 (도선 윗면=${(atLimit.y + WIRE_R).toFixed(3)}, 극 면=${(gapCenter + GAP_HALF).toFixed(3)})`,
+  )
+  // 뒤로 한계각까지 간 경우(−각) — 도선 뒷면이 뒤판 앞면보다 앞에 있어야 한다
+  const atLimitBack = swingWirePosition(-SWING_MAX_ANGLE)
+  assert(
+    atLimitBack.z - WIRE_R >= yokeFront,
+    `뒤로 한계각까지 가도 뒤판을 뚫지 않는다 (도선 뒷면=${(atLimitBack.z - WIRE_R).toFixed(3)} ≥ 뒤판 앞면=${yokeFront.toFixed(3)})`,
+  )
+  // 조작 순서: [전류 방향, 극 배치, 켜짐, 세기, 지속 시간(초)]
+  const full = MAX_CURRENT
+  const scenarios = {
+    '정지에서 출발': [[1, 1, true, full, 6]],
+    '정지에서 출발(반대)': [[-1, 1, true, full, 6]],
+    '전류 방향 뒤집기': [[1, 1, true, full, 6], [-1, 1, true, full, 6]],
+    '극 배치 뒤집기': [[-1, 1, true, full, 6], [-1, -1, true, full, 6]],
+    '껐다 켜기': [[1, 1, true, full, 0.4], [1, 1, false, full, 0.4], [1, 1, true, full, 6]],
+    '세기 0→최대': [[-1, 1, true, 0, 1], [-1, 1, true, full, 6]],
+  }
+  // 버튼을 일정한 간격으로 연타 — 고유 주기 근처에서 가장 크게 휘둘린다
+  for (let T = 0.3; T <= 1.6; T += 0.1) {
+    scenarios[`방향 버튼 ${T.toFixed(1)}초마다 연타`] = Array.from({ length: 30 }, (_, i) => [i % 2 ? -1 : 1, 1, true, full, T])
+  }
+  for (const dt of [1 / 60, 0.1]) {
+    for (const [name, ops] of Object.entries(scenarios)) {
+      const m = createModel()
+      setMode(m, 'swing')
+      let worstY = 0
+      let minZ = Infinity
+      let maxZ = -Infinity
+      let maxAngle = 0
+      for (const [dir, pol, on, cur, secs] of ops) {
+        setDirection(m, dir)
+        setMagnetPolarity(m, pol)
+        setOn(m, on)
+        setCurrent(m, cur)
+        for (let t = 0; t < secs; t += dt) {
+          stepSwing(m, dt)
+          const p = swingWirePosition(m.swingAngle)
+          worstY = Math.max(worstY, p.y - gapCenter + WIRE_R)
+          minZ = Math.min(minZ, p.z - WIRE_R)
+          maxZ = Math.max(maxZ, p.z)
+          maxAngle = Math.max(maxAngle, Math.abs(m.swingAngle))
+        }
+      }
+      const tag = `${name} (dt=${dt.toFixed(3)})`
+      assert(worstY <= GAP_HALF + 1e-9, `${tag}: 도선이 위 극 면을 넘지 않는다 (최고=${worstY.toFixed(3)} ≤ ${GAP_HALF})`)
+      assert(minZ >= yokeFront, `${tag}: 도선이 자석 뒤판을 뚫지 않는다 (가장 뒤=${minZ.toFixed(3)} ≥ ${yokeFront.toFixed(3)})`)
+      assert(maxZ <= ARM_FRONT_Z, `${tag}: 도선이 극 팔 앞끝을 벗어나지 않는다 (가장 앞=${maxZ.toFixed(3)} ≤ ${ARM_FRONT_Z})`)
+      // 평소 조작에서는 극에 부딪히지(한계각에 걸리지) 않아야 한다 — 부딪혀 멈추는 모습은 이상해 보인다
+      if (dt < 0.05) {
+        assert(maxAngle < SWING_MAX_ANGLE, `${tag}: 극에 부딪히지 않는다 (최대각=${maxAngle.toFixed(3)} < ${SWING_MAX_ANGLE.toFixed(3)})`)
+      }
+    }
+  }
 })()
 
 // 8) 전동기 — 힘을 받으면 그 방향으로 회전 속도가 붙고, 여러 바퀴를 돌아도 방향이 유지된다
