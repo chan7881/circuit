@@ -220,6 +220,10 @@ function openSheet(item) {
       b.textContent = `${value}${def.unit}`
       b.classList.toggle('selected', item.value === value)
       b.addEventListener('click', () => {
+        if (item.value === value) return
+        // 값·극성·스위치 바꾸기도 되돌릴 수 있어야 한다 — 기록하지 않으면 다음 «되돌리기»가
+        // 그 앞의 배치까지 한꺼번에 지운다.
+        pushHistory(history, model)
         updateComponent(model, item.uid, { value })
         afterModelChange()
         openSheet(findComponent(model, item.uid))
@@ -289,6 +293,7 @@ function closeSheet() {
 btnFlip.addEventListener('click', () => {
   if (!selectedUid) return
   const item = findComponent(model, selectedUid)
+  pushHistory(history, model)
   updateComponent(model, selectedUid, { flipped: !item.flipped })
   afterModelChange()
 })
@@ -296,6 +301,7 @@ btnFlip.addEventListener('click', () => {
 btnToggleSwitch.addEventListener('click', () => {
   if (!selectedUid) return
   const item = findComponent(model, selectedUid)
+  pushHistory(history, model)
   updateComponent(model, selectedUid, { closed: !item.closed })
   afterModelChange()
   openSheet(findComponent(model, selectedUid))

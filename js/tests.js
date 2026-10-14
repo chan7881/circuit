@@ -1,8 +1,9 @@
 // solver.js·hints.js 물리 검증. test.html에서 모듈로 로드되어 브라우저 화면과 콘솔에
 // PASS/FAIL을 출력한다. 빌드 도구 없이 순수 ES 모듈만으로 동작한다.
 
-import { createModel, placeComponentWithValue, allComponents } from './model.js'
+import { createModel, placeComponentWithValue, allComponents, EDGE_BY_KEY } from './model.js'
 import { solveCircuit } from './solver.js'
+import { batteryPlateCenters, nodePoint } from './render.js'
 import { diagnose } from './hints.js'
 import { PRESETS, applyPreset } from './presets.js'
 import {
@@ -204,12 +205,116 @@ function batteryUid(model) {
   const d2 = diagnose(brokenLoop, solveCircuit(brokenLoop))
   assert(d2 && d2.message.includes('끊겨'), '고리 미완성 힌트')
 
+  // 전구와 직렬로 전압계를 끼우면 전구가 꺼진다 — 이것이 «전압계 직렬» 실수다.
   const seriesVm = createModel()
   placeComponentWithValue(seriesVm, 'v_1_0', 'battery', { value: 3 })
+  placeComponentWithValue(seriesVm, 'v_1_2', 'bulb')
   placeComponentWithValue(seriesVm, 'h_0_0', 'voltmeter') // 단독으로 직렬 삽입
-  wireRest(seriesVm, new Set(['v_1_0', 'h_0_0']))
+  wireRest(seriesVm, new Set(['v_1_0', 'v_1_2', 'h_0_0']))
   const d3 = diagnose(seriesVm, solveCircuit(seriesVm))
   assert(d3 && d3.message.includes('나란히'), '전압계 직렬 단독 삽입 힌트')
+
+  // 도선으로 따로 이어 전구와 **병렬로** 단 전압계(교과서 그림 그대로)에는 힌트가 없어야 한다.
+  const parallelVm = createModel()
+  placeComponentWithValue(parallelVm, 'v_1_0', 'battery', { value: 3 })
+  placeComponentWithValue(parallelVm, 'v_1_2', 'bulb')
+  wireRest(parallelVm, new Set(['v_1_0', 'v_1_2']))
+  placeComponentWithValue(parallelVm, 'h_1_2', 'wire')
+  placeComponentWithValue(parallelVm, 'h_2_2', 'wire')
+  placeComponentWithValue(parallelVm, 'v_1_3', 'voltmeter')
+  const d4 = diagnose(parallelVm, solveCircuit(parallelVm))
+  assert(d4 === null, `도선으로 병렬 연결한 전압계는 힌트 없음 (실제=${d4 && d4.message})`)
+
+  // 전지 양 끝에 전압계만 단 것은 «전지 전압 측정»이다 — 직렬 실수가 아니다.
+  const batteryVm = createModel()
+  placeComponentWithValue(batteryVm, 'v_1_0', 'battery', { value: 3 })
+  placeComponentWithValue(batteryVm, 'h_0_0', 'voltmeter')
+  wireRest(batteryVm, new Set(['v_1_0', 'h_0_0']))
+  const d5 = diagnose(batteryVm, solveCircuit(batteryVm))
+  assert(!(d5 && d5.message.includes('나란히')), `전지에 전압계만 단 회로는 직렬 힌트 없음 (실제=${d5 && d5.message})`)
+})()
+
+// 9-1) 합선 판정: 부품이 있는 정상 회로는 전류가 커도 합선이 아니다. 전류계를 전지에 바로 대면 합선이다.
+;(function shortCircuitCriterionTest() {
+  const many = createModel()
+  placeComponentWithValue(many, 'v_1_0', 'battery', { value: 9 })
+  placeComponentWithValue(many, 'v_1_2', 'resistor', { value: 5 })
+  placeComponentWithValue(many, 'v_1_2', 'resistor', { value: 5 })
+  wireRest(many, new Set(['v_1_0', 'v_1_2']))
+  placeComponentWithValue(many, 'h_1_2', 'wire')
+  placeComponentWithValue(many, 'h_2_2', 'wire')
+  placeComponentWithValue(many, 'v_1_3', 'resistor', { value: 5 })
+  placeComponentWithValue(many, 'v_1_3', 'resistor', { value: 5 })
+  const sMany = solveCircuit(many)
+  const iMany = Math.abs(sMany.current.get(batteryUid(many)))
+  const dMany = diagnose(many, sMany)
+  assert(
+    !(dMany && dMany.message.includes('합선')),
+    `9V·5Ω 네 개 병렬(${iMany.toFixed(1)}A)은 합선 아님 (실제=${dMany && dMany.message})`,
+  )
+
+  const am = createModel()
+  placeComponentWithValue(am, 'v_1_0', 'battery', { value: 3 })
+  placeComponentWithValue(am, 'h_0_0', 'ammeter')
+  wireRest(am, new Set(['v_1_0', 'h_0_0']))
+  const dAm = diagnose(am, solveCircuit(am))
+  assert(dAm && dAm.message.includes('합선'), '전류계를 전지에 바로 대면 합선 힌트')
+})()
+
+// 9-2) 방향 — 이론 기준을 코드와 따로 세운다.
+//   ① 전지 안에서 전류는 −극 → +극으로 흐른다(밖에서는 + → −).
+//   ② 어느 노드에서나 들어오는 전류 = 나가는 전류(키르히호프 전류 법칙).
+//   ③ 그려진 + 막대는 전위가 높은 단자 쪽에 있어야 한다.
+// ⚠️ 위 셋 다 «크기만» 보는 검사로는 안 걸린다. 예전 테스트는 전부 Math.abs라서
+//    + 막대가 −단자에 그려진 버그와, 뒤집은 전지에서만 흐름이 거꾸로 가는 버그가 통과했다.
+;(function directionTest() {
+  const EDGE_KEYS = { v: 'v_1_0', h: 'h_0_0' }
+  for (const orient of ['v', 'h']) {
+    for (const flipped of [false, true]) {
+      const key = EDGE_KEYS[orient]
+      const m = createModel()
+      placeComponentWithValue(m, key, 'battery', { value: 3, flipped })
+      placeComponentWithValue(m, 'v_1_2', 'bulb')
+      wireRest(m, new Set([key, 'v_1_2']))
+      const s = solveCircuit(m)
+      const bat = allComponents(m).find((c) => c.type === 'battery')
+      const edge = EDGE_BY_KEY.get(key)
+      // 이론: flipped=false면 v가 +단자, flipped=true면 u가 +단자
+      const plusNode = flipped ? edge.u : edge.v
+      const minusNode = flipped ? edge.v : edge.u
+      const tag = `${orient === 'v' ? '세로' : '가로'} 전지${flipped ? '(뒤집음)' : ''}`
+
+      assert(
+        s.nodeVoltage[plusNode] - s.nodeVoltage[minusNode] > 2.9,
+        `${tag}: +단자 전위가 3V 높다 (차=${(s.nodeVoltage[plusNode] - s.nodeVoltage[minusNode]).toFixed(3)})`,
+      )
+
+      // ① u→v 기준 전류의 부호: −→+ 가 u→v면 양수
+      const iUV = s.current.get(bat.uid)
+      const expectedSign = minusNode === edge.u ? 1 : -1
+      assert(Math.sign(iUV) === expectedSign, `${tag}: 전지 안 전류는 −극→+극 (u→v 전류=${iUV.toFixed(3)})`)
+
+      // ② 모든 노드에서 전류 보존
+      const net = new Map()
+      for (const c of allComponents(m)) {
+        const e = EDGE_BY_KEY.get(c.edgeKey)
+        const i = s.current.get(c.uid)
+        net.set(e.u, (net.get(e.u) ?? 0) - i)
+        net.set(e.v, (net.get(e.v) ?? 0) + i)
+      }
+      const worst = Math.max(...[...net.values()].map(Math.abs))
+      assert(worst < 1e-6, `${tag}: 모든 노드에서 들어온 전류 = 나간 전류 (최대 어긋남=${worst.toExponential(1)}A)`)
+
+      // ③ 그림: + 막대가 +단자 쪽에 있다
+      const p1 = nodePoint(edge.r, edge.c)
+      const p2 = orient === 'h' ? nodePoint(edge.r, edge.c + 1) : nodePoint(edge.r + 1, edge.c)
+      const plusPt = plusNode === edge.u ? p1 : p2
+      const plates = batteryPlateCenters(p1, p2, flipped)
+      const dPlus = Math.hypot(plates.plus.x - plusPt.x, plates.plus.y - plusPt.y)
+      const dMinus = Math.hypot(plates.minus.x - plusPt.x, plates.minus.y - plusPt.y)
+      assert(dPlus < dMinus, `${tag}: 긴 막대(+)가 +단자 쪽에 그려진다`)
+    }
+  }
 })()
 
 // 10) 프리셋 6종이 전부 에러 없이 로드되고 힌트가 없어야(정상 동작) 함 — 병렬 프리셋만 예외 확인용 로그

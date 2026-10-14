@@ -37,7 +37,9 @@ export function bulbRatedPower(ratedV) {
 //  1배 넘으면 «과전류»(경고), 이 배수를 넘으면 «끊어질 만큼 위험».
 export const BULB_OVERPOWER_RATIO = 2
 
-export const SHORT_CIRCUIT_CURRENT = 5 // A — 전지 전류가 이보다 크면 합선 경고
+// 전지 내부저항에서 깎이는 전압이 전지 전압의 이 비율을 넘으면 합선 경고.
+// 도선 하나로 직접 이으면 약 91%가 깎이고, 부품이 하나라도 있으면 0.1%도 안 깎인다 — 그 사이 어디든 된다.
+export const SHORT_CIRCUIT_DROP_RATIO = 0.5
 export const ZERO_CURRENT_EPS = 1e-6 // A — 이보다 작으면 "전류 없음"으로 취급
 // 전압계(1MΩ)를 직렬로 단독 삽입하면 전지 전압이 몇 V든 새는 전류가 수 μA대에 머문다 —
 // 정상적인 회로 전류(보통 수십 mA~수 A)보다 훨씬 작으므로 이 값을 기준으로 구분한다.

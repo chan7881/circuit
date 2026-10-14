@@ -79,6 +79,11 @@ function drawStub(ctx, from, to) {
   ctx.restore()
 }
 
+/** 지금 그리는 부품의 라벨을 도선의 어느 쪽에 달지(+1: +perp, −1: −perp). draw()가 부품마다 정한다. */
+let labelSide = 1
+/** 지금 그리는 부품과 같은 칸에 다른 부품이 겹쳐 있는가 */
+let stackedNow = false
+
 export function draw(ctx, cssWidth, cssHeight, model, state) {
   const layout = computeLayout(cssWidth, cssHeight)
   ctx.clearRect(0, 0, cssWidth, cssHeight)
@@ -103,6 +108,11 @@ export function draw(ctx, cssWidth, cssHeight, model, state) {
 
     items.forEach((item, idx) => {
       const path = edgeItemPath(p1, p2, idx, items.length)
+      // 겹쳐 놓은 두 부품은 라벨을 **각자 바깥쪽**에 단다. 첫째 슬롯은 −perp 쪽에 놓이는데
+      // 라벨은 기본이 +perp 쪽이라, 둘째 부품 밑에 깔려 안 보였다(«전압 측정» 예제에서
+      // 전구 규격 3V가 사라짐, 2026-10-14 발견).
+      labelSide = items.length > 1 && idx === 0 ? -1 : 1
+      stackedNow = items.length > 1
       if (path.hasStubs) {
         const [nodeA, a, b, nodeB] = path.full
         drawStub(ctx, nodeA, a)
@@ -269,21 +279,32 @@ function mid(p1, p2, t = 0.5) {
   return { x: p1.x + (p2.x - p1.x) * t, y: p1.y + (p2.y - p1.y) * t }
 }
 
+/** 전지 기호의 두 극판 중심. flipped=false → p2(v) 쪽이 +(긴 막대), flipped=true → p1(u) 쪽이 +.
+ *  솔버의 극성(flipped=false면 v가 +단자)과 같아야 한다 — tests.js가 노드 전압으로 대조한다.
+ *  ⚠️ 예전에는 부호가 하나 뒤집혀 있어서 + 막대가 −단자 쪽에 그려졌다(2026-10-14 발견). */
+export function batteryPlateCenters(p1, p2, flipped) {
+  const len = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1
+  const dx = (p2.x - p1.x) / len
+  const dy = (p2.y - p1.y) / len
+  const c = mid(p1, p2)
+  const toPlus = flipped ? -1 : 1 // +1이면 p2 방향이 +
+  const gap = BATTERY_PLATE_GAP
+  return {
+    plus: { x: c.x + dx * gap * toPlus, y: c.y + dy * gap * toPlus },
+    minus: { x: c.x - dx * gap * toPlus, y: c.y - dy * gap * toPlus },
+  }
+}
+
 function drawBattery(ctx, item, p1, p2, color) {
   const perp = perpUnit(p1, p2)
   const c = mid(p1, p2)
-  const dx = (p2.x - p1.x) / Math.hypot(p2.x - p1.x, p2.y - p1.y || 1)
-  const dy = (p2.y - p1.y) / Math.hypot(p2.x - p1.x, p2.y - p1.y || 1)
-  const gap = BATTERY_PLATE_GAP
-  // flipped=false → p2(v) 쪽이 +(긴 막대), flipped=true → p1(u) 쪽이 +
-  const plusAtP2 = !item.flipped
-  const longSide = plusAtP2 ? 1 : -1 // +1: p2 방향에 긴 막대
+  const plates = batteryPlateCenters(p1, p2, item.flipped)
   ctx.strokeStyle = color
   ctx.fillStyle = color
   ctx.lineWidth = 4
   // 짧고 굵은 막대(−)
   const shortLen = 14
-  const shortCenter = { x: c.x - dx * gap * -longSide, y: c.y - dy * gap * -longSide }
+  const shortCenter = plates.minus
   ctx.beginPath()
   ctx.moveTo(shortCenter.x - perp.x * shortLen, shortCenter.y - perp.y * shortLen)
   ctx.lineTo(shortCenter.x + perp.x * shortLen, shortCenter.y + perp.y * shortLen)
@@ -291,14 +312,14 @@ function drawBattery(ctx, item, p1, p2, color) {
   ctx.stroke()
   // 길고 얇은 막대(+)
   const longLen = 22
-  const longCenter = { x: c.x + dx * gap * -longSide, y: c.y + dy * gap * -longSide }
+  const longCenter = plates.plus
   ctx.beginPath()
   ctx.moveTo(longCenter.x - perp.x * longLen, longCenter.y - perp.y * longLen)
   ctx.lineTo(longCenter.x + perp.x * longLen, longCenter.y + perp.y * longLen)
   ctx.lineWidth = 3
   ctx.stroke()
 
-  drawLabel(ctx, `${item.value}V`, c, perp, 30)
+  drawLabel(ctx, `${item.value}V`, c, perp, 30, undefined, false, longLen)
 }
 
 function drawResistor(ctx, p1, p2, color, label) {
@@ -324,7 +345,7 @@ function drawResistor(ctx, p1, p2, color, label) {
     else ctx.lineTo(x, y)
   })
   ctx.stroke()
-  drawLabel(ctx, label, mid(p1, p2), perp, 26)
+  drawLabel(ctx, label, mid(p1, p2), perp, 26, undefined, false, amp)
 }
 
 function drawBulb(ctx, item, p1, p2, color, current) {
@@ -396,8 +417,14 @@ function drawBulb(ctx, item, p1, p2, color, current) {
   //       라벨 상자의 절반 폭이 원 반지름(16)을 넘지 않게 거리를 잡아야 한다.
   //       «과전류!» 는 네 글자라 상자가 넓어서 규격 라벨보다 더 밀어낸다.
   const perp = perpUnit(p1, p2)
-  drawLabel(ctx, `${ratedV}V`, c, perp, 32)
-  if (over) drawLabel(ctx, '과전류!', c, perp, -46, 12, true)
+  // 같은 칸에 다른 부품이 겹쳐 있으면 반대쪽은 그 부품 자리다 — 거기 «과전류!»를 달면 가려진다.
+  // 그때는 규격 라벨에 붙여 바깥쪽 한 곳에 단다.
+  if (over && stackedNow) {
+    drawLabel(ctx, `${ratedV}V 과전류!`, c, perp, 32, 13, true, r)
+    return
+  }
+  drawLabel(ctx, `${ratedV}V`, c, perp, 32, undefined, false, r)
+  if (over) drawLabel(ctx, '과전류!', c, perp, -46, 12, true, r)
 }
 
 function drawSwitch(ctx, p1, p2, color, closed) {
@@ -424,7 +451,8 @@ function drawSwitch(ctx, p1, p2, color, closed) {
     ctx.lineTo(gap2.x - perp.x * 18, gap2.y - perp.y * 18)
   }
   ctx.stroke()
-  drawLabel(ctx, closed ? '닫힘' : '열림', c, perp, 26, undefined, true)
+  // 열린 레버는 −perp 쪽으로 18만큼 들린다 — 겹친 슬롯에서 라벨이 그쪽으로 가도 덮지 않게 비켜 둔다.
+  drawLabel(ctx, closed ? '닫힘' : '열림', c, perp, 26, undefined, true, 18)
 }
 
 function drawMeter(ctx, p1, p2, color, letter, reading, unit) {
@@ -447,19 +475,30 @@ function drawMeter(ctx, p1, p2, color, letter, reading, unit) {
   // 부호까지 보여주면 중학생에게는 "음수 전류"가 오히려 혼란스럽다.
   const magnitude = Math.abs(reading)
   const rounded = magnitude < 0.001 ? '0' : magnitude.toFixed(magnitude >= 10 ? 1 : 2)
-  drawLabel(ctx, `${rounded}${unit}`, c, perp, 28)
+  drawLabel(ctx, `${rounded}${unit}`, c, perp, 28, undefined, false, r)
 }
 
-function drawLabel(ctx, text, center, perp, offset, fontSize = 15, small = false) {
+/**
+ * 기호 옆에 값 라벨을 단다. clear를 주면 기호가 도선 수직 방향으로 그만큼 뻗어 있다고 보고,
+ * 라벨 상자가 그 바깥에서 시작하도록 offset을 늘린다.
+ * ⚠️ 세로로 놓인 부품은 라벨이 **좌우로** 붙어서, 고정 offset이면 글자가 긴 라벨(4.5V·1.5V·3.00V)이
+ *    전지 극판·전구·계기 원을 덮었다(2026-10-14). 글자 폭을 재서 밀어낸다.
+ */
+function drawLabel(ctx, text, center, perp, offset, fontSize = 15, small = false, clear = 0) {
+  offset *= labelSide
   ctx.save()
   ctx.font = `${small ? 'bold ' : ''}${fontSize}px system-ui, sans-serif`
   ctx.fillStyle = '#334155'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
-  const x = center.x + perp.x * offset
-  const y = center.y + perp.y * offset
   // 가독성을 위한 흰 배경
   const w = ctx.measureText(text).width + 8
+  if (clear > 0) {
+    const halfAlongPerp = Math.abs(perp.x) * (w / 2) + Math.abs(perp.y) * (fontSize / 2 + 2)
+    offset = Math.sign(offset) * Math.max(Math.abs(offset), clear + 3 + halfAlongPerp)
+  }
+  const x = center.x + perp.x * offset
+  const y = center.y + perp.y * offset
   ctx.fillStyle = 'rgba(255,255,255,0.85)'
   ctx.fillRect(x - w / 2, y - fontSize / 2 - 2, w, fontSize + 4)
   ctx.fillStyle = '#334155'

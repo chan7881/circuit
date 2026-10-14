@@ -62,10 +62,11 @@ html, body {
 .icon-btn svg { flex-shrink: 0; }
 
 /* 저자 스타일시트의 display 지정은 [hidden] 속성에 대한 브라우저 기본값(display:none)보다
-   우선순위가 높아서, 아래 .menu의 display:flex만 있으면 hidden이 걸려도 계속 보인다 —
-   그래서 .menu[hidden]을 따로 명시해 감춤 상태가 실제로 먹히게 한다. */
-.menu[hidden] {
-  display: none;
+   우선순위가 높아서, display:flex만 있으면 hidden이 걸려도 계속 보인다 — 그래서 감춤을
+   전역으로 못 박는다. ⚠️ 예전에는 .menu[hidden]만 있어서, 편집 창의 «스위치 닫기» 버튼이
+   전지·전구를 탭해도 늘 보였다(#sheet-actions button의 display:flex, 2026-10-14 발견). */
+[hidden] {
+  display: none !important;
 }
 
 .menu {

@@ -96,6 +96,7 @@ function gaussianSolve(A, b) {
 
 /**
  * 회로를 풀어 노드 전압과 부품별 전류를 계산한다.
+ * current는 간선의 u→v 방향을 +로 잰 값이다(모든 부품 공통).
  * @returns {{ nodeVoltage: number[], current: Map<string, number>, power: Map<string, number> }}
  */
 export function solveCircuit(model) {
@@ -138,10 +139,14 @@ export function solveCircuit(model) {
 
   const v = gaussianSolve(G, I)
 
+  // 전류 부호는 부품마다 **간선 방향(u→v)** 기준으로 통일해서 낸다.
+  // ⚠️ 국소 모델은 뒤집힌 전지만 p/q가 바뀌어 있다(p=v, q=u). p→q 값을 그대로 내보내면
+  //    뒤집힌 전지 하나만 부호가 반대가 되어, 흐름 애니메이션이 그 전지 안에서만 거꾸로 흘렀다.
   const current = new Map()
   const power = new Map()
   for (const { item, p, q, G: Gc, Isrc } of locals) {
-    const i = Gc * (v[p] - v[q]) + Isrc
+    const iPQ = Gc * (v[p] - v[q]) + Isrc
+    const i = p === edgeOf(item.edgeKey).u ? iPQ : -iPQ
     current.set(item.uid, i)
     power.set(item.uid, i * i * (Gc > 0 ? 1 / Gc : 0))
   }

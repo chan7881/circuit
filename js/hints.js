@@ -3,7 +3,8 @@
 
 import { allComponents } from './model.js'
 import {
-  SHORT_CIRCUIT_CURRENT,
+  BATTERY_INTERNAL_R,
+  SHORT_CIRCUIT_DROP_RATIO,
   ZERO_CURRENT_EPS,
   SERIES_VOLTMETER_CURRENT_EPS,
   bulbResistance,
@@ -32,15 +33,21 @@ export function diagnose(model, solveResult) {
     return { level: 'info', message: '전지를 놓아야 회로에 전류가 흘러요.' }
   }
 
-  // 전압계 하나가 유일한 통로에 단독으로(다른 부품과 겹치지 않고) 놓여 회로를 사실상 끊어놓은
-  // 경우 — 전압계는 저항이 매우 커서(1MΩ) 직렬로 놓으면 새는 전류가 μA대에 머문다. 이건
-  // allNearZero(1μA 미만)보다 느슨한 기준으로 따로 잡아야 한다 — 전압이 크면 새는 전류가
-  // 1μA를 넘어 "회로 미완성"으로 오분류되기 때문.
-  const seriesVoltmeter = voltmeters.some(
-    (vm) =>
-      (model.items.get(vm.edgeKey) ?? []).length === 1 &&
-      Math.abs(current.get(vm.uid) ?? 0) < SERIES_VOLTMETER_CURRENT_EPS,
-  )
+  // 전압계가 전구·저항·전류계와 **직렬로** 놓여 회로를 사실상 끊어놓은 경우 — 전압계는 저항이
+  // 매우 커서(1MΩ) 직렬로 놓으면 새는 전류가 μA대에 머문다. 이건 allNearZero(1μA 미만)보다
+  // 느슨한 기준으로 따로 잡아야 한다 — 전압이 크면 새는 전류가 1μA를 넘어 "회로 미완성"으로
+  // 오분류되기 때문.
+  // ⚠️ «전압계 전류가 작다»만으로 판정하면 안 된다. 병렬로 **바르게** 단 전압계도 늘 μA대다.
+  //    예전에는 그 기준만 써서, 도선으로 따로 이어 병렬 연결한 전압계(교과서 그림 그대로)에
+  //    «직렬로 달면…» 힌트가 떴다(2026-10-14 발견). 직렬이라는 증거는 **같은 μA 전류가
+  //    다른 부하(전구·저항·전류계)에도 흐른다**는 것이다 — 그 부하가 전압계에 막혀 있다는 뜻.
+  //    전지 양 끝에 전압계만 단 경우(전지 전압 측정)는 부하가 없으니 걸리지 않는다.
+  const loads = components.filter((c) => c.type === 'bulb' || c.type === 'resistor' || c.type === 'ammeter')
+  const seriesVoltmeter = voltmeters.some((vm) => {
+    const iVm = Math.abs(current.get(vm.uid) ?? 0)
+    if (iVm < ZERO_CURRENT_EPS || iVm >= SERIES_VOLTMETER_CURRENT_EPS) return false
+    return loads.some((ld) => Math.abs(Math.abs(current.get(ld.uid) ?? 0) - iVm) < iVm * 0.01)
+  })
   if (seriesVoltmeter) {
     return {
       level: 'info',
@@ -55,7 +62,12 @@ export function diagnose(model, solveResult) {
     return { level: 'info', message: '회로가 끊겨 있어요. 전지에서 나가 다시 전지로 돌아오는 길이 이어져야 해요.' }
   }
 
-  const shortCircuit = batteries.some((b) => Math.abs(current.get(b.uid) ?? 0) > SHORT_CIRCUIT_CURRENT)
+  // 합선 = 전지 바깥 저항이 거의 0이라 전지 전압이 내부저항에서 다 깎이는 상태.
+  // ⚠️ 전류 크기(예전 기준 5A)로 판정하면 9V에 5Ω 네 개를 병렬로 단 정상 회로(7.2A)도
+  //    «부품 없이 바로 이어졌다»고 잘못 알렸다(2026-10-14 발견). 단자 전압이 얼마나 깎였는지로 본다.
+  const shortCircuit = batteries.some(
+    (b) => Math.abs(current.get(b.uid) ?? 0) * BATTERY_INTERNAL_R > SHORT_CIRCUIT_DROP_RATIO * b.value,
+  )
   if (shortCircuit) {
     return { level: 'error', message: '합선이에요! 전지 양 끝이 부품 없이 바로 이어졌어요.' }
   }
