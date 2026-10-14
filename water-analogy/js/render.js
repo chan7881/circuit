@@ -158,13 +158,18 @@ function drawLoopPipe(ctx, origin, model, isWater) {
         }
       }
     } else {
-      // 전기: 전선. 저항 자리는 굵기 대신 지그재그 기호로 표현하므로 선만 얇게 긋는다
+      // 전기: 전선. 저항 자리는 굵기 대신 저항 기호(drawResistor)로 표현하므로 선만 얇게 긋는다.
+      // ⚠️ 스위치 두 접점 사이와 전지 극판 사이에는 전선을 긋지 않는다. 예전에는 한 줄로
+      //    쭉 그어서, 스위치를 열어 레버를 들어도 밑의 전선이 두 접점을 그대로 이어 회로가
+      //    닫혀 보였다(2026-10-14 발견). 전지도 극판 사이로 전선이 지나가 합선처럼 보였다.
       ctx.strokeStyle = WIRE_COLOR
       ctx.lineWidth = 4
-      ctx.beginPath()
-      ctx.moveTo(seg.from.x, seg.from.y)
-      ctx.lineTo(seg.to.x, seg.to.y)
-      ctx.stroke()
+      for (const [a, b] of wirePiecesWithGaps(seg, wireGaps(origin, model))) {
+        ctx.beginPath()
+        ctx.moveTo(a.x, a.y)
+        ctx.lineTo(b.x, b.y)
+        ctx.stroke()
+      }
     }
   }
   ctx.restore()
@@ -227,13 +232,60 @@ function drawPump(ctx, p, model, time) {
   ctx.restore()
 }
 
+const SWITCH_CONTACT_HALF = 16 // 스위치 두 접점이 가운데에서 떨어진 거리
+const BATTERY_CELL_H = 13
+const BATTERY_PLATE_GAP = 7 // 한 칸 안에서 긴 선(+)과 짧은 선(−) 사이
+
+/** 전지 칸 수. 펌프 세기는 슬라이드바라 소수라서 정수로 반올림한다 — 예전에는 소수를 그대로
+ *  써서 2.05에서 칸이 3개로 늘고, 세로 가운데 맞춤도 2.05칸 기준이라 어긋났다(2026-10-14). */
+function batteryCells(model) {
+  return Math.max(1, Math.round(model.pump))
+}
+
+/** 전지 기호의 맨 위 극판과 맨 아래 극판의 y — 이 사이에는 전선을 긋지 않는다. */
+function batteryPlateSpan(p, model) {
+  const cells = batteryCells(model)
+  const top = p.y - (cells * BATTERY_CELL_H) / 2
+  return { top, bottom: top + (cells - 1) * BATTERY_CELL_H + BATTERY_PLATE_GAP }
+}
+
+/** 전기 쪽 고리에서 전선을 비워 둘 구간 — 스위치 접점 사이, 전지 극판 사이. */
+function wireGaps(origin, model) {
+  const gate = slotPoint(origin, 'gate')
+  const span = batteryPlateSpan(slotPoint(origin, 'source'), model)
+  return [
+    { axis: 'x', at: gate.y, from: gate.x - SWITCH_CONTACT_HALF, to: gate.x + SWITCH_CONTACT_HALF },
+    { axis: 'y', at: origin.x, from: span.top, to: span.bottom },
+  ]
+}
+
+/** 곧은 변 하나를 gaps 구간만 비우고 조각으로 나눈다. */
+function wirePiecesWithGaps(seg, gaps) {
+  const horizontal = seg.from.y === seg.to.y
+  const axis = horizontal ? 'x' : 'y'
+  const fixed = horizontal ? seg.from.y : seg.from.x
+  const lo = Math.min(seg.from[axis], seg.to[axis])
+  const hi = Math.max(seg.from[axis], seg.to[axis])
+  const cuts = gaps
+    .filter((g) => g.axis === axis && g.at === fixed && g.to > lo && g.from < hi)
+    .sort((a, b) => a.from - b.from)
+  const pieces = []
+  let start = lo
+  for (const g of cuts) {
+    if (g.from > start) pieces.push([start, g.from])
+    start = Math.max(start, g.to)
+  }
+  if (start < hi) pieces.push([start, hi])
+  const pt = (v) => (horizontal ? { x: v, y: fixed } : { x: fixed, y: v })
+  return pieces.map(([a, b]) => [pt(a), pt(b)])
+}
+
 /** 전지 — 긴 선(+)과 짧은 선(−). 세기가 셀수록 칸이 많아진다(직렬로 더 이은 것처럼). */
 function drawBattery(ctx, p, model) {
   ctx.save()
-  const cells = Math.max(1, model.pump)
-  const cellH = 13
-  const totalH = cells * cellH
-  let y = p.y - totalH / 2
+  const cells = batteryCells(model)
+  const cellH = BATTERY_CELL_H
+  let y = batteryPlateSpan(p, model).top
   for (let i = 0; i < cells; i++) {
     ctx.strokeStyle = model.pump === 0 ? '#cbd5e1' : '#dc2626'
     ctx.lineWidth = 3
@@ -243,8 +295,8 @@ function drawBattery(ctx, p, model) {
     ctx.lineTo(p.x + 15, y)
     ctx.stroke()
     ctx.beginPath() // 짧은 선(−)
-    ctx.moveTo(p.x - 8, y + 7)
-    ctx.lineTo(p.x + 8, y + 7)
+    ctx.moveTo(p.x - 8, y + BATTERY_PLATE_GAP)
+    ctx.lineTo(p.x + 8, y + BATTERY_PLATE_GAP)
     ctx.stroke()
     y += cellH
   }
@@ -281,11 +333,11 @@ function drawGate(ctx, p, open, isWater) {
     ctx.lineCap = 'round'
     ctx.fillStyle = '#fff'
     ctx.beginPath()
-    ctx.arc(p.x - 16, p.y, 3.5, 0, Math.PI * 2)
+    ctx.arc(p.x - SWITCH_CONTACT_HALF, p.y, 3.5, 0, Math.PI * 2)
     ctx.fill()
     ctx.stroke()
     ctx.beginPath()
-    ctx.arc(p.x + 16, p.y, 3.5, 0, Math.PI * 2)
+    ctx.arc(p.x + SWITCH_CONTACT_HALF, p.y, 3.5, 0, Math.PI * 2)
     ctx.fill()
     ctx.stroke()
     // `open`은 "길이 열려 있어 흐른다"는 뜻이다. 스위치는 **닿아 있어야** 흐르므로,
@@ -293,8 +345,8 @@ function drawGate(ctx, p, open, isWater) {
     // (밸브의 '열림'과 스위치의 '닫힘'이 같은 상태라 방향을 반대로 그리기 쉬운 자리다 —
     //  실제로 처음엔 뒤집혀 있어서 흐르는데도 스위치가 끊긴 것처럼 보였다.)
     ctx.beginPath()
-    ctx.moveTo(p.x - 16, p.y)
-    if (open) ctx.lineTo(p.x + 16, p.y)
+    ctx.moveTo(p.x - SWITCH_CONTACT_HALF, p.y)
+    if (open) ctx.lineTo(p.x + SWITCH_CONTACT_HALF, p.y)
     else ctx.lineTo(p.x + 11, p.y - 15)
     ctx.stroke()
   }
